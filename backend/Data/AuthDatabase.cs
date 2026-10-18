@@ -5,18 +5,30 @@ namespace SmartEnvironment.Api.Data;
 
 public static class AuthDatabase
 {
-    // Creates the database and, if configured, the first account when no users exist.
-    // Expects registered database/Identity services and optional initial user settings.
-    // Returns a Task with no value. Invalid account settings stop startup with an error.
+    // Updates the database to the latest migration, creates the roles,
+    // and, if configured, the first Beheerder account when no users exist.
+    // Invalid account settings stop startup with an error.
     public static async Task InitializeAsync(IServiceProvider services, IConfiguration configuration)
     {
         // Create a scope so database services are disposed when initialization finishes.
         await using var scope = services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
-        // Create missing tables. This does not migrate an existing database schema.
-        await database.Database.EnsureCreatedAsync();
+        // Apply all migrations in the Migrations folder. New tables or columns are added
+        // without deleting existing data.
+        await database.Database.MigrateAsync();
 
+        // 1. Make sure the roles Beheerder and Docent exist.
+        var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        foreach (var role in Roles.All)
+        {
+            if (!await roles.RoleExistsAsync(role))
+            {
+                await roles.CreateAsync(new IdentityRole(role));
+            }
+        }
+
+        // 2. Only create the first account when the database has no users yet.
         if (await database.Users.AnyAsync())
         {
             return;
@@ -39,11 +51,12 @@ public static class AuthDatabase
             throw new InvalidOperationException("Configure both a valid initial email and password using local secrets.");
         }
 
-        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var user = new IdentityUser
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+        var user = new AppUser
         {
             UserName = email.Trim(),
-            Email = email.Trim()
+            Email = email.Trim(),
+            FullName = "Beheerder"
         };
 
         // Identity validates the account and stores a password hash.
@@ -54,5 +67,8 @@ public static class AuthDatabase
             var errors = string.Join(" ", result.Errors.Select(error => error.Description));
             throw new InvalidOperationException("The initial account could not be created: " + errors);
         }
+
+        // The first account is the Beheerder, so it can create the Docent accounts.
+        await users.AddToRoleAsync(user, Roles.Beheerder);
     }
 }
