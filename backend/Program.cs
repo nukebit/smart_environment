@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartEnvironment.Api.Auth;
 using SmartEnvironment.Api.Data;
+using SmartEnvironment.Api.Users;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +17,7 @@ AuthSetup.Configure(builder);
 
 var app = builder.Build();
 
-// 4. Create the database and first account if needed.
+// 4. Create the database, roles and first account if needed.
 await AuthDatabase.InitializeAsync(app.Services, app.Configuration);
 
 // 5. Set up how incoming requests are handled.
@@ -35,7 +36,8 @@ app.UseAuthorization();         // Check whether the user can access the endpoin
 app.UseRateLimiter();           // Check the limit on login attempts.
 
 // 6. Connect API URLs to Minimal API endpoints and page URLs to React.
-app.MapAuthEndpoints();         // /api/auth/... (see Auth/AuthEndpoints.cs)
+app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
+app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
