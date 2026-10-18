@@ -1,19 +1,14 @@
-
 import { useEffect, useState } from 'react';
 import {
-  Leaf,
   Bell,
-  Moon,
-  Sun,
   ChartNoAxesCombined,
   Building2,
   Settings,
   ArrowUpRight,
   ArrowRight,
-  LogOut,
-  Menu,
-  X,
 } from 'lucide-react';
+import AppHeader from './AppHeader';
+import { useDarkMode } from './useDarkMode';
 
 // Tijdelijke voorbeeldgegevens.
 // Later vervangen we deze door gegevens uit de backend.
@@ -24,20 +19,11 @@ const sensorData = {
   luchtdruk: '1013',
 };
 
-const navigatie = [
-  'Dashboard',
-  'Sensordata',
-  'Lokalen',
-  'Waarschuwingen',
-  'Beheer',
-];
-
 export default function DashboardPage() {
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState('');
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [darkMode, toggleDarkMode] = useDarkMode(); // Wordt onthouden tussen pagina's.
   const [activePage, setActivePage] = useState('Dashboard');
 
   // Controleer of de gebruiker is ingelogd.
@@ -56,50 +42,23 @@ export default function DashboardPage() {
 
         const user = await response.json();
         setEmail(user.email);
+        setRole(user.role);
       })
       .catch(() =>
         setError('Sessie controleren mislukt. Vernieuw de pagina.')
       );
   }, []);
 
-  // Bestaande uitlogfunctionaliteit behouden.
-  async function handleLogout() {
-    if (busy) return;
-
-    setBusy(true);
-    setError('');
-
-    try {
-      const csrf = await fetch('/api/auth/csrf', {
-        credentials: 'include',
-      });
-
-      if (!csrf.ok) throw new Error();
-
-      const { token } = await csrf.json();
-
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'X-CSRF-TOKEN': token },
-      });
-
-      if (!response.ok && response.status !== 401) {
-        throw new Error();
-      }
-
-      window.location.replace('/login');
-    } catch {
-      setError('Uitloggen mislukt. Probeer opnieuw.');
-      setBusy(false);
-    }
-  }
-
-  // Tijdelijke navigatie binnen het dashboard.
+  // Navigatie. Beheer is een eigen pagina (/beheer); de rest is nog tijdelijk.
   function handleNavigation(page: string) {
+    if (page === 'Beheer') {
+      window.location.assign('/beheer');
+      return;
+    }
     setActivePage(page);
-    setMenuOpen(false);
   }
+
+  const isBeheerder = role === 'Beheerder';
 
   const kaarten = [
     {
@@ -123,6 +82,7 @@ export default function DashboardPage() {
       ),
       icon: ChartNoAxesCombined,
       kleur: 'emerald',
+      pagina: 'Sensordata',
     },
     {
       titel: 'Lokalen Overzicht',
@@ -137,6 +97,7 @@ export default function DashboardPage() {
       ),
       icon: Building2,
       kleur: 'blue',
+      pagina: 'Lokalen',
     },
     {
       titel: 'Waarschuwingen',
@@ -151,22 +112,29 @@ export default function DashboardPage() {
       ),
       icon: Bell,
       kleur: 'amber',
+      pagina: 'Waarschuwingen',
     },
     {
-      titel: 'Beheer & Instellingen',
+      titel: 'Beheer',
       beschrijving: 'Beheer de Smart Environment omgeving',
       detail: (
         <div className="rounded-lg border-l-2 border-green-600 bg-slate-50 p-3">
-          <p className="font-semibold">Configuratie beheren</p>
+          <p className="font-semibold">Accounts beheren</p>
           <p className="mt-1 text-xs text-slate-500">
-            Docentenaccounts & lokaalconfiguratie
+            Docenten- en beheerdersaccounts
           </p>
         </div>
       ),
       icon: Settings,
       kleur: 'green',
+      pagina: 'Beheer',
     },
   ];
+
+  // Een Docent ziet de kaart "Beheer" niet (de backend weigert hem ook zelf).
+  const zichtbareKaarten = kaarten.filter(
+    kaart => isBeheerder || kaart.pagina !== 'Beheer'
+  );
 
   const iconKleuren: Record<string, string> = {
     emerald: 'bg-emerald-100 text-emerald-700',
@@ -191,78 +159,14 @@ export default function DashboardPage() {
   return (
     <div className={darkMode ? 'min-h-screen bg-slate-900 text-white' : 'min-h-screen bg-slate-50 text-slate-900'}>
 
-      {/* NAVIGATIEBALK */}
-      <header className={`border-b ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4">
-
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-emerald-700 p-2 text-white">
-              <Leaf size={20} />
-            </div>
-            <span className="font-bold">Smart Environment</span>
-          </div>
-
-          <nav className="hidden items-center gap-7 lg:flex">
-            {navigatie.map(page => (
-              <button
-                key={page}
-                onClick={() => handleNavigation(page)}
-                className={`text-sm transition hover:text-emerald-600 ${
-                  activePage === page
-                    ? 'font-semibold text-emerald-700'
-                    : darkMode ? 'text-slate-300' : 'text-slate-500'
-                }`}
-              >
-                {page}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <button
-              aria-label="Wissel kleurthema"
-              onClick={() => setDarkMode(!darkMode)}
-              className="rounded-lg border border-slate-200 p-2"
-            >
-              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-
-            <button
-              onClick={handleLogout}
-              disabled={busy}
-              className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm sm:flex"
-            >
-              <LogOut size={16} />
-              Uitloggen
-            </button>
-
-            <button
-              className="lg:hidden"
-              aria-label="Open navigatiemenu"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              {menuOpen ? <X /> : <Menu />}
-            </button>
-          </div>
-        </div>
-
-        {menuOpen && (
-          <nav className="flex flex-col gap-2 border-t border-slate-200 p-4 lg:hidden">
-            {navigatie.map(page => (
-              <button
-                key={page}
-                onClick={() => handleNavigation(page)}
-                className="rounded-lg p-2 text-left hover:bg-emerald-100 hover:text-slate-900"
-              >
-                {page}
-              </button>
-            ))}
-            <button onClick={handleLogout} disabled={busy} className="p-2 text-left">
-              Uitloggen
-            </button>
-          </nav>
-        )}
-      </header>
+      {/* NAVIGATIEBALK (gedeeld met de Beheer-pagina, zie AppHeader.tsx) */}
+      <AppHeader
+        activePage={activePage}
+        role={role}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onNavigate={handleNavigation}
+      />
 
       {/* DASHBOARDINHOUD */}
       <main className="mx-auto max-w-7xl px-5 py-10">
@@ -282,7 +186,7 @@ export default function DashboardPage() {
                 Kies een onderdeel om het binnenklimaat van je school te bekijken.
               </p>
               <p className="mt-2 text-xs text-slate-500">
-                Ingelogd als {email}
+                Ingelogd als {email}{role && ` · ${role}`}
               </p>
             </div>
 
@@ -307,9 +211,9 @@ export default function DashboardPage() {
             </span>
           </div>
 
-          {/* VIER DASHBOARDKAARTEN */}
+          {/* DASHBOARDKAARTEN (een Docent ziet er drie, een Beheerder vier) */}
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {kaarten.map(kaart => {
+            {zichtbareKaarten.map(kaart => {
               const Icon = kaart.icon;
 
               return (
@@ -342,13 +246,8 @@ export default function DashboardPage() {
                   </div>
 
                   <button
-                    onClick={() => handleNavigation(
-                      kaart.titel.startsWith('Sensordata') ? 'Sensordata'
-                      : kaart.titel.startsWith('Lokalen') ? 'Lokalen'
-                      : kaart.titel.startsWith('Waarschuwingen') ? 'Waarschuwingen'
-                      : 'Beheer'
-                    )}
-                    className="flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
+                    onClick={() => handleNavigation(kaart.pagina)}
+                    className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
                   >
                     Bekijk <ArrowRight size={16} />
                   </button>
