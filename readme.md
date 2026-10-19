@@ -169,7 +169,8 @@ Statuscodes: **401** = niet ingelogd · **403** = geen rechten · **400** = onge
 ```
 smart_environment/
 ├── backend/
-│   ├── Auth/            Inloggen: endpoints, instellingen (cookies, CSRF, lockout), filters
+│   ├── Auth/            Inloggen: endpoints, instellingen (cookies, CSRF, lockout)
+│   ├── Common/          Gedeelde hulpfuncties voor alle endpoints (CSRF, validatie, foutmeldingen)
 │   ├── Data/            Database: AppUser, Roles, AuthDbContext, opstarten van de database
 │   ├── Migrations/      Bouwplan van de database (gemaakt door EF Core, niet zelf aanpassen)
 │   ├── Users/           Gebruikersbeheer (CRUD) voor de Beheerder
@@ -178,14 +179,14 @@ smart_environment/
 └── frontend/
     ├── public/          Logo en andere afbeeldingen
     └── src/
-        ├── main.tsx         Kiest de pagina op basis van de URL
-        ├── LoginPage.tsx    /login
-        ├── DashboardPage.tsx /dashboard
-        ├── BeheerPage.tsx   /beheer (alleen Beheerder)
-        ├── AppHeader.tsx    Navigatiebalk voor alle pagina's na het inloggen
-        ├── useDarkMode.ts   Onthoudt het donkere thema
-        └── index.css        Tailwind en eigen kleuren
+        ├── components/  Stukken die op meerdere pagina's terugkomen (AppHeader)
+        ├── hooks/       Herbruikbare logica (useDarkMode)
+        ├── pages/       Eén bestand per pagina: LoginPage, DashboardPage, BeheerPage
+        ├── index.css    Tailwind en eigen kleuren
+        └── main.tsx     Kiest de pagina op basis van de URL
 ```
+
+Nieuwe onderdelen (bijvoorbeeld sensordata) krijgen in `backend` een eigen map, zoals `Sensors/`, en in `frontend/src/pages` een eigen pagina.
 
 ---
 
@@ -193,19 +194,19 @@ smart_environment/
 
 - Werk nooit direct op `master`. Maak een eigen branch:
 
-  ```powershell
+```powershell
   git switch master
   git pull
   git switch -c JouwNaam-onderwerp
-  ```
+```
 
 - Sla je werk op:
 
-  ```powershell
+```powershell
   git add .
   git commit -m "Korte beschrijving"
   git push
-  ```
+```
 
 - Klaar? Maak een **Pull Request** naar `master` en laat een groepsgenoot het nakijken.
 
