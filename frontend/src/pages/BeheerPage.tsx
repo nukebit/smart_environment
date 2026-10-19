@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Plus, TriangleAlert, X } from 'lucide-react';
-import AppHeader from './AppHeader';
-import { useDarkMode } from './useDarkMode';
+import AppHeader from '../components/AppHeader';
+import { useDarkMode } from '../hooks/useDarkMode';
 
 // One account as the backend sends it (GET /api/users).
 type User = {

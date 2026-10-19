@@ -1,7 +1,7 @@
-using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
+using SmartEnvironment.Api.Common;
 using SmartEnvironment.Api.Data;
 
 namespace SmartEnvironment.Api.Auth;
@@ -16,7 +16,7 @@ public static class AuthEndpoints
         // Every route below starts with /api/auth.
         var group = app.MapGroup("/api/auth")
             .DisableCookieRedirect()          // Send 401 instead of redirecting to a login page.
-            .AddEndpointFilter(NoCacheFilter); // Browsers must not store login responses.
+            .AddEndpointFilter(ApiFilters.NoCacheFilter); // Browsers must not store login responses.
 
         group.MapGet("/csrf", GetCsrfToken)
             .AllowAnonymous();
@@ -24,11 +24,11 @@ public static class AuthEndpoints
         group.MapPost("/login", Login)
             .AllowAnonymous()
             .RequireRateLimiting("login")
-            .AddEndpointFilter(CsrfFilter);
+            .AddEndpointFilter(ApiFilters.CsrfFilter);
 
         group.MapPost("/logout", Logout)
             .RequireAuthorization()
-            .AddEndpointFilter(CsrfFilter);
+            .AddEndpointFilter(ApiFilters.CsrfFilter);
 
         group.MapGet("/me", GetCurrentUser)
             .RequireAuthorization();
@@ -54,9 +54,10 @@ public static class AuthEndpoints
         SignInManager<AppUser> signInManager)
     {
         // 1. Check the [Required], [EmailAddress] and [StringLength] rules in LoginRequest.
-        if (!IsValid(request))
+        var invalid = ApiFilters.Validate(request);
+        if (invalid != null)
         {
-            return Results.BadRequest(new { message = "Invalid email or password." });
+            return invalid;
         }
 
         // 2. Find the account that belongs to the submitted email.
@@ -127,37 +128,5 @@ public static class AuthEndpoints
             fullName = user.FullName,
             role = roles.FirstOrDefault() ?? string.Empty
         };
-    }
-
-    // Runs the validation attributes of a request class. Returns true when all rules pass.
-    private static bool IsValid(object request)
-    {
-        var context = new ValidationContext(request);
-        return Validator.TryValidateObject(request, context, null, validateAllProperties: true);
-    }
-
-    // Stops the request with 400 when the CSRF cookie and X-CSRF-TOKEN header do not match.
-    // Used on every POST, because POST requests change something (log in or log out).
-    private static async ValueTask<object?> CsrfFilter(
-        EndpointFilterInvocationContext context,
-        EndpointFilterDelegate next)
-    {
-        var antiforgery = context.HttpContext.RequestServices.GetRequiredService<IAntiforgery>();
-
-        if (!await antiforgery.IsRequestValidAsync(context.HttpContext))
-        {
-            return Results.BadRequest(new { message = "Invalid CSRF token." });
-        }
-
-        return await next(context);
-    }
-
-    // Adds Cache-Control: no-store, so the browser never caches account data.
-    private static async ValueTask<object?> NoCacheFilter(
-        EndpointFilterInvocationContext context,
-        EndpointFilterDelegate next)
-    {
-        context.HttpContext.Response.Headers.CacheControl = "no-store";
-        return await next(context);
     }
 }

@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
-import LoginPage from './LoginPage';
-import DashboardPage from './DashboardPage';
-import BeheerPage from './BeheerPage';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import BeheerPage from './pages/BeheerPage';
 import './index.css';
 
 const rootElement = document.getElementById('root');

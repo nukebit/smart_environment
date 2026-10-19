@@ -7,8 +7,8 @@ import {
   ArrowUpRight,
   ArrowRight,
 } from 'lucide-react';
-import AppHeader from './AppHeader';
-import { useDarkMode } from './useDarkMode';
+import AppHeader from '../components/AppHeader';
+import { useDarkMode } from '../hooks/useDarkMode';
 
 // Tijdelijke voorbeeldgegevens.
 // Later vervangen we deze door gegevens uit de backend.

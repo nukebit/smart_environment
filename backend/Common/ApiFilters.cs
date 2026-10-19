@@ -2,9 +2,10 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 
-namespace SmartEnvironment.Api.Auth;
+namespace SmartEnvironment.Api.Common;
 
-// Shared helpers for Minimal API endpoints, so every endpoint file can reuse them.
+// Shared helpers for all Minimal API endpoints (Auth, Users and later Sensors).
+// They live in Common because they do not belong to one feature.
 public static class ApiFilters
 {
     // Stops the request with 400 when the CSRF cookie and X-CSRF-TOKEN header do not match.

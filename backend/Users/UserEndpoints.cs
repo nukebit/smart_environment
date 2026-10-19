@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using SmartEnvironment.Api.Auth;
+using SmartEnvironment.Api.Common;
 using SmartEnvironment.Api.Data;
 
 namespace SmartEnvironment.Api.Users;
