@@ -49,10 +49,14 @@ export default function DashboardPage() {
       );
   }, []);
 
-  // Navigatie. Beheer is een eigen pagina (/beheer); de rest is nog tijdelijk.
+  // Navigatie. Beheer en Sensordata zijn eigen pagina's; de rest is tijdelijk.
   function handleNavigation(page: string) {
     if (page === 'Beheer') {
       window.location.assign('/beheer');
+      return;
+    }
+    if (page === 'Sensordata') {
+      window.location.assign('/sensordata');
       return;
     }
     setActivePage(page);
