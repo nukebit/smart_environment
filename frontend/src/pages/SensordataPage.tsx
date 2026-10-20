@@ -215,6 +215,104 @@ export default function SensordataPage() {
     fetchOpenMeteo();
   }, []);
 
+  // Dataset generatie per periode
+  const meetData = useMemo(() => {
+    // 1. AFGELOPEN 24 UUR (Tijdstippen in uren)
+    if (geselecteerdePeriode === '24u') {
+      const uren = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00', '06:00', 'Nu'];
+
+      if (geselecteerdSensortype === 'temperatuur') {
+        const values = [19.2, 20.8, 22.4, 24.1, 23.8, 22.1, 20.7, 19.8, 18.9, 18.3, 18.1, 18.6, 20.2];
+        return uren.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Warmtepiek in lesuur' : 'Normaal',
+        }));
+      }
+
+      if (geselecteerdSensortype === 'co2') {
+        const values = [520, 850, 1080, 1150, 920, 610, 500, 480, 440, 430, 420, 430, 510];
+        return uren.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Onvoldoende ventilatie' : 'Goed geventileerd',
+        }));
+      }
+
+      if (geselecteerdSensortype === 'luchtvochtigheid') {
+        const values = [48, 52, 56, 59, 57, 54, 53, 51, 50, 49, 48, 49, 51];
+        return uren.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= 70 ? 'Te vochtig' : 'Ideaal vochtgehalte',
+        }));
+      }
+
+      const values = [1015, 1016, 1017, 1017, 1018, 1019, 1020, 1020, 1021, 1021, 1022, 1022, 1023];
+      return uren.map((datum, idx) => ({
+        datum,
+        waarde: values[idx],
+        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+        statusText: 'Stabiele barometer',
+      }));
+    }
+
+    // 2. AFGELOPEN 7 DAGEN (Dagen van de week)
+    if (geselecteerdePeriode === '7d') {
+      const dagen = ['Ma 19 mei', 'Di 20 mei', 'Wo 21 mei', 'Do 22 mei', 'Vr 23 mei', 'Za 24 mei', 'Zo 25 mei'];
+
+      if (geselecteerdSensortype === 'temperatuur') {
+        const values = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
+        return dagen.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Grensoverschrijding' : 'Normaal',
+        }));
+      }
+
+      if (geselecteerdSensortype === 'co2') {
+        const values = [880, 1050, 1120, 940, 890, 460, 440];
+        return dagen.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Te hoog CO₂' : 'Frisse lucht',
+        }));
+      }
+
+      if (geselecteerdSensortype === 'luchtvochtigheid') {
+        const values = [52, 55, 68, 72, 64, 49, 47];
+        return dagen.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= 70 ? 'Vochtig' : 'Ideaal',
+        }));
+      }
+
+      const values = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
+      return dagen.map((datum, idx) => ({
+        datum,
+        waarde: values[idx],
+        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+        statusText: 'Normale luchtdruk',
+      }));
+    }
+
+    // Fallback voor overige periodes
+    const dataDefault = ['15 feb', '1 mrt', '15 mrt', '29 mrt', '12 apr', '25 apr', '14 mei'];
+    const values = [18.2, 19.8, 20.4, 21.2, 23.9, 23.1, 24.2];
+    return dataDefault.map((datum, idx) => ({
+      datum,
+      waarde: values[idx],
+      isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+      statusText: 'Normaal',
+    }));
+  }, [geselecteerdePeriode, geselecteerdSensortype, huidigeSensor]);
 
   function handleNavigation(page: string) {
     if (page === 'Dashboard') window.location.assign('/dashboard');
@@ -225,18 +323,10 @@ export default function SensordataPage() {
     <div className={darkMode ? 'min-h-screen bg-slate-900 text-slate-100' : 'min-h-screen bg-slate-50 text-slate-800'}>
       <AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} onNavigate={handleNavigation} />
       <main className="mx-auto max-w-7xl px-5 py-8">
-        <div className="mb-6">
-          <p className="text-xs font-semibold uppercase text-emerald-600">Analyse</p>
-          <h1 className="text-2xl font-bold">Sensordata</h1>
-          <p className="text-xs text-slate-400">Actuele weerdata: {weather ? `${weather.temp}°C, ${weather.humidity}% RV` : 'Laden...'}</p>
-        </div>
+        <div className="mb-6"><h1 className="text-2xl font-bold">Sensordata</h1></div>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <aside className="lg:col-span-3">
-            <div className="rounded-2xl border p-5">Filters ({actieveFiltersCount})</div>
-          </aside>
-          <section className="lg:col-span-9">
-            <div className="rounded-2xl border p-6">Klimaatverloop ({geselecteerdGebouw} · {geselecteerdLokaal})</div>
-          </section>
+          <aside className="lg:col-span-3"><div className="rounded-2xl border p-5">Filters ({actieveFiltersCount})</div></aside>
+          <section className="lg:col-span-9"><div className="rounded-2xl border p-6">{meetData.length} meetpunten geladen ({geselecteerdePeriode})</div></section>
         </div>
       </main>
     </div>
