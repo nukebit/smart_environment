@@ -93,10 +93,128 @@ type WeatherData = {
   timestamp: string;
 };
 
-
 export default function SensordataPage() {
-  const [role] = useState('Beheerder');
+  const [role, setRole] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode();
+
+  // Filters
+  const [geselecteerdGebouw, setGeselecteerdGebouw] = useState('Hoofdgebouw');
+  const [geselecteerdLokaal, setGeselecteerdLokaal] = useState('Lokaal 2.14');
+  const [geselecteerdSensortype, setGeselecteerdSensortype] = useState('temperatuur');
+  const [geselecteerdePeriode, setGeselecteerdePeriode] = useState('3m');
+
+  // Grafiek visualisatie voorkeuren
+  const [weergaveModus, setWeergaveModus] = useState<'lijn' | 'staaf'>('lijn');
+  const [toonComfortzone, setToonComfortzone] = useState(true);
+
+  // Hover state
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    x: number;
+    y: number;
+    datum: string;
+    waarde: number;
+    isOverschrijding: boolean;
+    statusText: string;
+  } | null>(null);
+
+  // Open-Meteo actuele weerdata
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+
+  // Sessie controle
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+      .then(async response => {
+        if (response.status === 401) {
+          window.location.replace('/login');
+          return;
+        }
+        if (!response.ok) throw new Error();
+        const user = await response.json();
+        setRole(user.role);
+      })
+      .catch(() => {
+        window.location.replace('/login');
+      });
+  }, []);
+
+  const handleGebouwChange = (gebouw: string) => {
+    setGeselecteerdGebouw(gebouw);
+    const lokalen = gebouwenData[gebouw] || [];
+    if (lokalen.length > 0 && !lokalen.includes(geselecteerdLokaal)) {
+      setGeselecteerdLokaal(lokalen[0]);
+    }
+  };
+
+  const huidigeSensor = useMemo(() => {
+    return sensorTypen.find(s => s.id === geselecteerdSensortype) || sensorTypen[0];
+  }, [geselecteerdSensortype]);
+
+  const huidigePeriode = useMemo(() => {
+    return periodes.find(p => p.id === geselecteerdePeriode) || periodes[3];
+  }, [geselecteerdePeriode]);
+
+  // Pas standaardweergave aan per sensor
+  useEffect(() => {
+    setWeergaveModus(huidigeSensor.standaardWeergave);
+  }, [huidigeSensor]);
+
+  const resetFilters = () => {
+    setGeselecteerdGebouw('Hoofdgebouw');
+    setGeselecteerdLokaal('Lokaal 2.14');
+    setGeselecteerdSensortype('temperatuur');
+    setGeselecteerdePeriode('3m');
+    setWeergaveModus('lijn');
+  };
+
+  const actieveFiltersCount = useMemo(() => {
+    let count = 0;
+    if (geselecteerdGebouw !== 'Hoofdgebouw') count++;
+    if (geselecteerdLokaal !== 'Lokaal 2.14') count++;
+    if (geselecteerdSensortype !== 'temperatuur') count++;
+    if (geselecteerdePeriode !== '3m') count++;
+    return count > 0 ? `${count} actief` : 'Standaard';
+  }, [geselecteerdGebouw, geselecteerdLokaal, geselecteerdSensortype, geselecteerdePeriode]);
+
+  // Open-Meteo call
+  const fetchOpenMeteo = () => {
+    setWeatherLoading(true);
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=51.92&longitude=4.47&current=temperature_2m,relative_humidity_2m,wind_speed_10m')
+      .then(res => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(data => {
+        if (data && data.current) {
+          const nu = new Date();
+          const tijdstr = nu.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+          setWeather({
+            temp: Math.round(data.current.temperature_2m * 10) / 10,
+            humidity: Math.round(data.current.relative_humidity_2m),
+            windSpeed: Math.round(data.current.wind_speed_10m * 10) / 10,
+            isRealApi: true,
+            timestamp: tijdstr,
+          });
+        }
+      })
+      .catch(() => {
+        setWeather({
+          temp: 14.8,
+          humidity: 68,
+          windSpeed: 12.5,
+          isRealApi: false,
+          timestamp: 'Historische norm',
+        });
+      })
+      .finally(() => {
+        setWeatherLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchOpenMeteo();
+  }, []);
+
 
   function handleNavigation(page: string) {
     if (page === 'Dashboard') window.location.assign('/dashboard');
@@ -105,15 +223,21 @@ export default function SensordataPage() {
 
   return (
     <div className={darkMode ? 'min-h-screen bg-slate-900 text-slate-100' : 'min-h-screen bg-slate-50 text-slate-800'}>
-      <AppHeader
-        activePage="Sensordata"
-        role={role}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onNavigate={handleNavigation}
-      />
+      <AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} onNavigate={handleNavigation} />
       <main className="mx-auto max-w-7xl px-5 py-8">
-        <h1 className="text-2xl font-bold">Sensordata</h1>
+        <div className="mb-6">
+          <p className="text-xs font-semibold uppercase text-emerald-600">Analyse</p>
+          <h1 className="text-2xl font-bold">Sensordata</h1>
+          <p className="text-xs text-slate-400">Actuele weerdata: {weather ? `${weather.temp}°C, ${weather.humidity}% RV` : 'Laden...'}</p>
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <aside className="lg:col-span-3">
+            <div className="rounded-2xl border p-5">Filters ({actieveFiltersCount})</div>
+          </aside>
+          <section className="lg:col-span-9">
+            <div className="rounded-2xl border p-6">Klimaatverloop ({geselecteerdGebouw} · {geselecteerdLokaal})</div>
+          </section>
+        </div>
       </main>
     </div>
   );
