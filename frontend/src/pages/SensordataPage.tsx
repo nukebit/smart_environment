@@ -401,11 +401,106 @@ export default function SensordataPage() {
     return { min, max, avg, overschrijdingen };
   }, [meetData]);
 
+  // CSV export
+  const handleExportCsv = () => {
+    const headers = ['Gebouw', 'Lokaal', 'Sensortype', 'Periode', 'Tijd_Datum', 'Waarde', 'Eenheid', 'Alarmgrens', 'Status'];
+    const rows = meetData.map(d => [
+      geselecteerdGebouw,
+      geselecteerdLokaal,
+      huidigeSensor.label,
+      huidigePeriode.label,
+      d.datum,
+      d.waarde.toString().replace('.', ','),
+      huidigeSensor.eenheid,
+      huidigeSensor.defaultGrens.toString().replace('.', ','),
+      d.isOverschrijding ? 'Grensoverschrijding' : 'Normaal',
+    ]);
 
-  function handleNavigation(page: string) {
+    const csvContent = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `sensordata_${geselecteerdGebouw}_${geselecteerdLokaal}_${geselecteerdSensortype}_${geselecteerdePeriode}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleNavigation = (page: string) => {
     if (page === 'Dashboard') window.location.assign('/dashboard');
-    if (page === 'Beheer') window.location.assign('/beheer');
-  }
+    else if (page === 'Beheer') window.location.assign('/beheer');
+  };
+
+  // Y-as bereik & schaling
+  const { yMin, yMax, ySteps } = useMemo(() => {
+    if (geselecteerdSensortype === 'temperatuur') {
+      return { yMin: 16, yMax: 26, ySteps: [16, 18, 20, 22, 24, 26] };
+    }
+    if (geselecteerdSensortype === 'co2') {
+      return { yMin: 400, yMax: 1300, ySteps: [400, 600, 800, 1000, 1200] };
+    }
+    if (geselecteerdSensortype === 'luchtvochtigheid') {
+      return { yMin: 30, yMax: 80, ySteps: [30, 40, 50, 60, 70, 80] };
+    }
+    return { yMin: 1005, yMax: 1035, ySteps: [1005, 1010, 1015, 1020, 1025, 1030, 1035] };
+  }, [geselecteerdSensortype]);
+
+  const chartWidth = 800;
+  const chartHeight = 280;
+  const padding = { top: 40, right: 75, bottom: 45, left: 50 };
+  const graphWidth = chartWidth - padding.left - padding.right;
+  const graphHeight = chartHeight - padding.top - padding.bottom;
+
+  const getYPos = (val: number) => {
+    const clamped = Math.max(yMin, Math.min(yMax, val));
+    const ratio = (clamped - yMin) / (yMax - yMin);
+    return padding.top + (1 - ratio) * graphHeight;
+  };
+
+  const getXPos = (index: number) => {
+    if (meetData.length <= 1) return padding.left + graphWidth / 2;
+    if (weergaveModus === 'staaf') {
+      const slotWidth = graphWidth / meetData.length;
+      return padding.left + (index + 0.5) * slotWidth;
+    }
+    return padding.left + (index / (meetData.length - 1)) * graphWidth;
+  };
+
+  // Vloeiende bezier curve
+  const svgPath = useMemo(() => {
+    if (meetData.length === 0) return '';
+    const points = meetData.map((d, i) => ({ x: getXPos(i), y: getYPos(d.waarde) }));
+    let path = `M ${points[0].x} ${points[0].y}`;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i === 0 ? 0 : i - 1];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] || p2;
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+    return path;
+  }, [meetData, yMin, yMax, weergaveModus]);
+
+  const svgAreaPath = useMemo(() => {
+    if (!svgPath || meetData.length === 0) return '';
+    const lastX = getXPos(meetData.length - 1);
+    const firstX = getXPos(0);
+    const bottomY = padding.top + graphHeight;
+    return `${svgPath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
+  }, [svgPath, meetData.length, weergaveModus]);
+
+  const alarmY = getYPos(huidigeSensor.defaultGrens);
+  const comfortTopY = getYPos(huidigeSensor.optimaalMax);
+  const comfortBottomY = getYPos(huidigeSensor.optimaalMin);
+
 
   return (
     <div className={darkMode ? 'min-h-screen bg-slate-900 text-slate-100' : 'min-h-screen bg-slate-50 text-slate-800'}>
@@ -414,9 +509,7 @@ export default function SensordataPage() {
         <div className="mb-6"><h1 className="text-2xl font-bold">Sensordata</h1></div>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-3"><div className="rounded-2xl border p-5">Filters ({actieveFiltersCount})</div></aside>
-          <section className="lg:col-span-9">
-            <div className="rounded-2xl border p-6">Statistieken: Gemiddelde {statistieken.avg}{huidigeSensor.eenheid}, Min {statistieken.min}, Max {statistieken.max}</div>
-          </section>
+          <section className="lg:col-span-9"><div className="rounded-2xl border p-6">Curve pad berekend: {svgPath.substring(0, 30)}...</div></section>
         </div>
       </main>
     </div>
