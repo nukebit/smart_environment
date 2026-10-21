@@ -303,16 +303,104 @@ export default function SensordataPage() {
       }));
     }
 
-    // Fallback voor overige periodes
-    const dataDefault = ['15 feb', '1 mrt', '15 mrt', '29 mrt', '12 apr', '25 apr', '14 mei'];
-    const values = [18.2, 19.8, 20.4, 21.2, 23.9, 23.1, 24.2];
-    return dataDefault.map((datum, idx) => ({
+    // 3. AFGELOPEN 30 DAGEN (Data per 3-4 dagen)
+    if (geselecteerdePeriode === '30d') {
+      const data30 = ['26 apr', '30 apr', '4 mei', '8 mei', '12 mei', '16 mei', '20 mei', '24 mei', '26 mei'];
+
+      if (geselecteerdSensortype === 'temperatuur') {
+        const values = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
+        return data30.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Warme lesdag' : 'Comfortabel',
+        }));
+      }
+
+      if (geselecteerdSensortype === 'co2') {
+        const values = [810, 950, 1140, 880, 1080, 910, 860, 520, 840];
+        return data30.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= 1000 ? 'Ventilatieadvies' : 'Voldoende',
+        }));
+      }
+
+      if (geselecteerdSensortype === 'luchtvochtigheid') {
+        const values = [51, 58, 64, 73, 66, 61, 55, 52, 56];
+        return data30.map((datum, idx) => ({
+          datum,
+          waarde: values[idx],
+          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+          statusText: values[idx] >= 70 ? 'Te vochtig' : 'Goed',
+        }));
+      }
+
+      const values = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
+      return data30.map((datum, idx) => ({
+        datum,
+        waarde: values[idx],
+        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+        statusText: 'Stabiel',
+      }));
+    }
+
+    // 4. AFGELOPEN 3 MAANDEN
+    const data3m = [
+      '15 feb', '22 feb', '1 mrt', '8 mrt', '15 mrt', '22 mrt', '29 mrt',
+      '5 apr', '12 apr', '18 apr', '25 apr', '1 mei', '8 mei', '14 mei',
+    ];
+
+    if (geselecteerdSensortype === 'temperatuur') {
+      const values = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
+      return data3m.map((datum, idx) => ({
+        datum,
+        waarde: values[idx],
+        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+        statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Grensoverschrijding' : 'Normaal',
+      }));
+    }
+
+    if (geselecteerdSensortype === 'co2') {
+      const values = [580, 640, 720, 810, 750, 920, 880, 1050, 940, 1180, 990, 1120, 890, 1040];
+      return data3m.map((datum, idx) => ({
+        datum,
+        waarde: values[idx],
+        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+        statusText: values[idx] >= 1000 ? 'Grensoverschrijding' : 'Goed geventileerd',
+      }));
+    }
+
+    if (geselecteerdSensortype === 'luchtvochtigheid') {
+      const values = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
+      return data3m.map((datum, idx) => ({
+        datum,
+        waarde: values[idx],
+        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
+        statusText: values[idx] >= 70 ? 'Hoge luchtvochtigheid' : 'Ideale luchtvochtigheid',
+      }));
+    }
+
+    const values = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
+    return data3m.map((datum, idx) => ({
       datum,
       waarde: values[idx],
       isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-      statusText: 'Normaal',
+      statusText: 'Normale luchtdruk',
     }));
   }, [geselecteerdePeriode, geselecteerdSensortype, huidigeSensor]);
+
+  // Statistische calculaties
+  const statistieken = useMemo(() => {
+    const waarden = meetData.map(d => d.waarde);
+    const min = Math.min(...waarden);
+    const max = Math.max(...waarden);
+    const avg = Math.round((waarden.reduce((acc, curr) => acc + curr, 0) / waarden.length) * 10) / 10;
+    const overschrijdingen = meetData.filter(d => d.isOverschrijding).length;
+    return { min, max, avg, overschrijdingen };
+  }, [meetData]);
+
 
   function handleNavigation(page: string) {
     if (page === 'Dashboard') window.location.assign('/dashboard');
@@ -326,7 +414,9 @@ export default function SensordataPage() {
         <div className="mb-6"><h1 className="text-2xl font-bold">Sensordata</h1></div>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-3"><div className="rounded-2xl border p-5">Filters ({actieveFiltersCount})</div></aside>
-          <section className="lg:col-span-9"><div className="rounded-2xl border p-6">{meetData.length} meetpunten geladen ({geselecteerdePeriode})</div></section>
+          <section className="lg:col-span-9">
+            <div className="rounded-2xl border p-6">Statistieken: Gemiddelde {statistieken.avg}{huidigeSensor.eenheid}, Min {statistieken.min}, Max {statistieken.max}</div>
+          </section>
         </div>
       </main>
     </div>
