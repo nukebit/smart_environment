@@ -501,15 +501,124 @@ export default function SensordataPage() {
   const comfortTopY = getYPos(huidigeSensor.optimaalMax);
   const comfortBottomY = getYPos(huidigeSensor.optimaalMin);
 
-
   return (
     <div className={darkMode ? 'min-h-screen bg-slate-900 text-slate-100' : 'min-h-screen bg-slate-50 text-slate-800'}>
-      <AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} onNavigate={handleNavigation} />
+      {/* HEADER */}
+      <AppHeader
+        activePage="Sensordata"
+        role={role}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onNavigate={handleNavigation}
+      />
+
       <main className="mx-auto max-w-7xl px-5 py-8">
-        <div className="mb-6"><h1 className="text-2xl font-bold">Sensordata</h1></div>
+        {/* TITELBALK */}
+        <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+              Analyse
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl dark:text-white">
+              Sensordata
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Bekijk en vergelijk historische klimaatmetingen.
+            </p>
+          </div>
+
+          <button
+            onClick={handleExportCsv}
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
+              darkMode ? 'border-slate-700 bg-slate-800 text-slate-200' : 'border-slate-200 bg-white text-slate-700 shadow-2xs'
+            }`}
+          >
+            <Download size={15} />
+            Data exporteren
+          </button>
+        </div>
+
+        {/* OPEN-METEO WEERBALK: RUSTIG, WIJDER EN MET DUIDELIJKE AANWEZIGHEID */}
+        {weather && (
+          <section
+            className={`mb-6 rounded-2xl border px-5 py-3.5 shadow-2xs transition ${
+              darkMode
+                ? 'border-slate-800 bg-slate-800/80 text-slate-200'
+                : 'border-slate-200/90 bg-white text-slate-700'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              {/* Linkerzijde: titel en bron */}
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
+                  <CloudSun size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Buitencondities
+                    </span>
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                      Meting {weather.timestamp}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Klimaatcontext buiten t.o.v. binnen in {geselecteerdGebouw}
+                  </p>
+                </div>
+              </div>
+
+              {/* Rechterzijde: duidelijk afleesbare buitenwaarden */}
+              <div className="flex flex-wrap items-center gap-5 sm:gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Buitentemperatuur:</span>
+                  <span className="text-base font-bold text-slate-900 dark:text-white">
+                    {weather.temp}°C
+                  </span>
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                    Binnen {statistieken.avg > weather.temp ? `+${(statistieken.avg - weather.temp).toFixed(1)}°C warmer` : `${(statistieken.avg - weather.temp).toFixed(1)}°C`}
+                  </span>
+                </div>
+
+                <div className="hidden h-4 w-px bg-slate-200 sm:block dark:bg-slate-700" />
+
+                <div className="flex items-center gap-2">
+                  <Droplets size={16} className="text-blue-500" />
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Luchtvochtigheid:</span>
+                  <span className="font-semibold text-slate-900 dark:text-white">{weather.humidity}% RV</span>
+                </div>
+
+                <div className="hidden h-4 w-px bg-slate-200 md:block dark:bg-slate-700" />
+
+                <div className="hidden items-center gap-2 md:flex">
+                  <Wind size={16} className="text-teal-500" />
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Wind:</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">{weather.windSpeed} km/u</span>
+                </div>
+
+                <button
+                  onClick={fetchOpenMeteo}
+                  title="Ververs actuele weerdata via Open-Meteo"
+                  className="cursor-pointer rounded-lg border border-slate-200 p-1.5 text-slate-400 transition hover:border-slate-300 hover:text-emerald-600 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-emerald-400"
+                >
+                  <RefreshCw size={13} className={weatherLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <aside className="lg:col-span-3"><div className="rounded-2xl border p-5">Filters ({actieveFiltersCount})</div></aside>
-          <section className="lg:col-span-9"><div className="rounded-2xl border p-6">Curve pad berekend: {svgPath.substring(0, 30)}...</div></section>
+          <aside className="lg:col-span-3">
+            <div className={`rounded-2xl border p-5 ${darkMode ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}>
+              Filters ({actieveFiltersCount})
+            </div>
+          </aside>
+          <section className="lg:col-span-9">
+            <div className={`rounded-2xl border p-6 ${darkMode ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}>
+              Grafiekweergave voor {geselecteerdGebouw} · {geselecteerdLokaal}
+            </div>
+          </section>
         </div>
       </main>
     </div>
