@@ -608,13 +608,119 @@ export default function SensordataPage() {
           </section>
         )}
 
+        {/* HOOFDINDELING */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          
+          {/* LINKER FILTERPANEEL */}
           <aside className="lg:col-span-3">
-            <div className={`rounded-2xl border p-5 ${darkMode ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}>
-              Filters ({actieveFiltersCount})
+            <div
+              className={`rounded-2xl border p-5 shadow-2xs ${
+                darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+              }`}
+            >
+              <div className="mb-4 flex items-center justify-between border-b pb-3 dark:border-slate-700/60">
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Filters</h2>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                  {actieveFiltersCount}
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {/* 1. FILTER: GEBOUW */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Gebouw
+                  </label>
+                  <select
+                    value={geselecteerdGebouw}
+                    onChange={e => handleGebouwChange(e.target.value)}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                    }`}
+                  >
+                    {Object.keys(gebouwenData).map(gebouw => (
+                      <option key={gebouw} value={gebouw}>
+                        {gebouw}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. FILTER: LOKAAL */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Lokaal
+                  </label>
+                  <select
+                    value={geselecteerdLokaal}
+                    onChange={e => setGeselecteerdLokaal(e.target.value)}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                    }`}
+                  >
+                    {(gebouwenData[geselecteerdGebouw] || []).map(lokaal => (
+                      <option key={lokaal} value={lokaal}>
+                        {lokaal}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. FILTER: SENSORTYPE */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Sensortype
+                  </label>
+                  <select
+                    value={geselecteerdSensortype}
+                    onChange={e => setGeselecteerdSensortype(e.target.value)}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                    }`}
+                  >
+                    {sensorTypen.map(sensor => (
+                      <option key={sensor.id} value={sensor.id}>
+                        {sensor.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 4. FILTER: PERIODE */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Periode
+                  </label>
+                  <select
+                    value={geselecteerdePeriode}
+                    onChange={e => setGeselecteerdePeriode(e.target.value)}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                    }`}
+                  >
+                    {periodes.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    onClick={resetFilters}
+                    className={`flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700`}
+                  >
+                    <RotateCcw size={12} />
+                    Filters wissen
+                  </button>
+                </div>
+              </div>
+
             </div>
           </aside>
-          <section className="lg:col-span-9">
+
+          <section className="space-y-6 lg:col-span-9">
             <div className={`rounded-2xl border p-6 ${darkMode ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}>
               Grafiekweergave voor {geselecteerdGebouw} · {geselecteerdLokaal}
             </div>
