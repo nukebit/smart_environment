@@ -717,12 +717,123 @@ export default function SensordataPage() {
                 </div>
               </div>
 
+              {/* OPVALLENDE NORM & GRENSWAARDE KAART */}
+              <div
+                className={`mt-5 rounded-2xl border p-4 transition ${
+                  darkMode
+                    ? 'border-emerald-800/60 bg-emerald-950/25 text-slate-200'
+                    : 'border-emerald-200/90 bg-emerald-50/70 text-slate-800 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2.5 dark:border-emerald-800/50">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-emerald-600 text-white dark:bg-emerald-500">
+                      <Info size={12} strokeWidth={2.5} />
+                    </span>
+                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                      Norm voor {huidigeSensor.naam}
+                    </span>
+                  </div>
+                  <span className="rounded-full bg-emerald-200/70 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-300">
+                    Richtlijn
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 dark:bg-slate-900/60">
+                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Optimaal bereik</span>
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                      {huidigeSensor.optimaalMin} – {huidigeSensor.optimaalMax} {huidigeSensor.eenheid}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 dark:bg-slate-900/60">
+                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Alarmdrempel</span>
+                    <span className="font-bold text-[#b45309] dark:text-amber-400">
+                      ≥ {huidigeSensor.defaultGrens} {huidigeSensor.eenheid}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="mt-2.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                  {huidigeSensor.beschrijving}
+                </p>
+              </div>
             </div>
           </aside>
 
+          {/* RECHTER GRAFIEK & DATACARDS */}
           <section className="space-y-6 lg:col-span-9">
-            <div className={`rounded-2xl border p-6 ${darkMode ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}>
-              Grafiekweergave voor {geselecteerdGebouw} · {geselecteerdLokaal}
+            
+            {/* GRAFIEK CONTAINER */}
+            <div
+              className={`rounded-2xl border p-6 shadow-2xs transition ${
+                darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+              }`}
+            >
+              {/* GRAFIEK HEADER MET GEBOUW, LOKAAL EN TIJDBESTEK */}
+              <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    {huidigeSensor.naam}verloop
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{geselecteerdGebouw}</span>
+                    {' · '}
+                    <span>{geselecteerdLokaal}</span>
+                    {' · '}
+                    <span>{huidigePeriode.datumTekst}</span>
+                  </p>
+                </div>
+
+                {/* LEGENDA & VISUALISATIE KEUZE */}
+                <div className="flex flex-wrap items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: huidigeSensor.kleur }} />
+                    <span className="text-slate-600 dark:text-slate-300">{huidigeSensor.naam}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-4 border-t-2 border-dashed border-[#b45309]" />
+                    <span className="font-medium text-[#b45309] dark:text-amber-400">
+                      Bovengrens
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-4 border-t-2 border-dashed border-[#0284c7]" />
+                    <span className="font-medium text-[#0284c7] dark:text-sky-400">
+                      Ondergrens
+                    </span>
+                  </div>
+
+                  {/* Lijn / Staven schakelaar */}
+                  <div className={`flex rounded-lg border p-0.5 ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-slate-100'}`}>
+                    <button
+                      onClick={() => setWeergaveModus('lijn')}
+                      className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
+                        weergaveModus === 'lijn'
+                          ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                      }`}
+                    >
+                      Lijn
+                    </button>
+                    <button
+                      onClick={() => setWeergaveModus('staaf')}
+                      className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
+                        weergaveModus === 'staaf'
+                          ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                      }`}
+                    >
+                      Staven
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+
+              <div className="flex h-64 items-center justify-center rounded-xl border border-dashed">Grafiek visualisatie...</div>
             </div>
           </section>
         </div>
