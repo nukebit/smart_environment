@@ -51,6 +51,10 @@ export default function DashboardPage() {
 
   // Navigatie. Beheer is een eigen pagina (/beheer); de rest is nog tijdelijk.
   function handleNavigation(page: string) {
+    if (page === 'Waarschuwingen') {
+      window.location.assign('/waarschuwingen');
+      return;
+    }
     if (page === 'Beheer') {
       window.location.assign('/beheer');
       return;

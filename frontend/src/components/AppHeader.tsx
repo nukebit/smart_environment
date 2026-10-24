@@ -31,6 +31,11 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   function handleNavigation(page: string) {
     setMenuOpen(false);
 
+    if (page === 'Waarschuwingen') {
+      if (activePage !== page) window.location.assign('/waarschuwingen');
+      return;
+    }
+
     // Beheer is een eigen pagina.
     if (page === 'Beheer') {
       if (activePage !== 'Beheer') window.location.assign('/beheer');
