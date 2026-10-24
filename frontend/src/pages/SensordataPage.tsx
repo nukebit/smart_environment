@@ -832,8 +832,126 @@ export default function SensordataPage() {
                 </div>
               </div>
 
+              {/* SVG GRAFIEK VLAK */}
+              <div className="relative w-full">
+                <svg
+                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                  className="w-full select-none"
+                  style={{ minWidth: '100%' }}
+                >
+                  <defs>
+                    <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={huidigeSensor.kleur} stopOpacity="0.16" />
+                      <stop offset="100%" stopColor={huidigeSensor.kleur} stopOpacity="0.01" />
+                    </linearGradient>
+                  </defs>
 
-              <div className="flex h-64 items-center justify-center rounded-xl border border-dashed">Grafiek visualisatie...</div>
+                  {/* HORIZONTALE RASTERLIJNEN */}
+                  {ySteps.map(step => {
+                    const y = getYPos(step);
+                    return (
+                      <g key={step}>
+                        <line
+                          x1={padding.left}
+                          y1={y}
+                          x2={chartWidth - padding.right}
+                          y2={y}
+                          stroke={darkMode ? '#1e293b' : '#f1f5f9'}
+                          strokeWidth="1"
+                        />
+                        <text
+                          x={padding.left - 12}
+                          y={y + 3.5}
+                          textAnchor="end"
+                          fontSize="11"
+                          fill={darkMode ? '#64748b' : '#94a3b8'}
+                        >
+                          {step}{huidigeSensor.eenheid === '°C' ? '°' : ''}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+
+                  {/* VLOEIENDE LIJNGRAFIEK */}
+                  {weergaveModus === 'lijn' && (
+                    <>
+                      <path d={svgAreaPath} fill="url(#areaGradient)" />
+                      <path
+                        d={svgPath}
+                        fill="none"
+                        stroke={huidigeSensor.kleur}
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+
+                      {/* MEETPUNTEN */}
+                      {meetData.map((d, i) => {
+                        const x = getXPos(i);
+                        const y = getYPos(d.waarde);
+                        const isExceeded = d.waarde >= huidigeSensor.defaultGrens;
+                        const isTooLow = d.waarde < huidigeSensor.optimaalMin;
+
+                        return (
+                          <g
+                            key={i}
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredPoint({
+                              x,
+                              y,
+                              datum: d.datum,
+                              waarde: d.waarde,
+                              isOverschrijding: isExceeded,
+                              statusText: isExceeded
+                                ? 'Boven alarmgrens'
+                                : isTooLow
+                                ? 'Onder de ondergrens (te koel)'
+                                : 'Binnen optimaal bereik',
+                            })}
+                            onMouseLeave={() => setHoveredPoint(null)}
+                          >
+                            {isExceeded ? (
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r="4.5"
+                                fill="#b45309"
+                                stroke="#ffffff"
+                                strokeWidth="1.5"
+                              />
+                            ) : isTooLow ? (
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r="4.5"
+                                fill="#0284c7"
+                                stroke="#ffffff"
+                                strokeWidth="1.5"
+                              />
+                            ) : (
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r="3.5"
+                                fill={huidigeSensor.kleur}
+                                stroke="#ffffff"
+                                strokeWidth="1.5"
+                              />
+                            )}
+                          </g>
+                        );
+                      })}
+                    </>
+                  )}
+
+
+                  {/* X-AS DATUMLABELS */}
+                  {meetData.map((d, i) => (
+                    <text key={i} x={getXPos(i)} y={chartHeight - padding.bottom + 22} textAnchor="middle" fontSize="11" fill="#94a3b8">{d.datum}</text>
+                  ))}
+                </svg>
+              </div>
             </div>
           </section>
         </div>
