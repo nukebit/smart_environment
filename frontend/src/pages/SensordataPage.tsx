@@ -945,6 +945,104 @@ export default function SensordataPage() {
                     </>
                   )}
 
+                  {/* STAAFGRAFIEK */}
+                  {weergaveModus === 'staaf' && (
+                    <g>
+                      {meetData.map((d, i) => {
+                        const barWidth = Math.max(12, Math.min(24, (graphWidth / meetData.length) * 0.6));
+                        const x = getXPos(i) - barWidth / 2;
+                        const y = getYPos(d.waarde);
+                        const bottomY = padding.top + graphHeight;
+                        const barHeight = Math.max(4, bottomY - y);
+                        const isExceeded = d.isOverschrijding;
+
+                        return (
+                          <g
+                            key={i}
+                            className="cursor-pointer transition-opacity hover:opacity-80"
+                            onMouseEnter={() => setHoveredPoint({ x: x + barWidth / 2, y, datum: d.datum, waarde: d.waarde, isOverschrijding: isExceeded, statusText: d.statusText })}
+                            onMouseLeave={() => setHoveredPoint(null)}
+                          >
+                            <rect
+                              x={x}
+                              y={y}
+                              width={barWidth}
+                              height={barHeight}
+                              rx="3"
+                              fill={isExceeded ? '#d97706' : huidigeSensor.kleur}
+                              opacity={isExceeded ? 0.95 : 0.85}
+                            />
+                            {isExceeded && (
+                              <circle cx={x + barWidth / 2} cy={y - 5} r="2.5" fill="#d97706" />
+                            )}
+                          </g>
+                        );
+                      })}
+                    </g>
+                  )}
+
+                  {/* ONDERGRENS LIJN MET DUIDELIJKE BADGE OP DE RECHTER AS (ALTIJD BOVENOP DE GRAFIEK) */}
+                  <g>
+                    <line
+                      x1={padding.left}
+                      y1={comfortBottomY}
+                      x2={chartWidth - padding.right}
+                      y2={comfortBottomY}
+                      stroke="#0284c7"
+                      strokeWidth="1.5"
+                      strokeDasharray="6,4"
+                    />
+                    <rect
+                      x={chartWidth - padding.right + 6}
+                      y={comfortBottomY - 9}
+                      width="54"
+                      height="18"
+                      rx="4"
+                      fill="#0284c7"
+                    />
+                    <text
+                      x={chartWidth - padding.right + 33}
+                      y={comfortBottomY + 3.5}
+                      textAnchor="middle"
+                      fontSize="10"
+                      fontWeight="700"
+                      fill="#ffffff"
+                    >
+                      {huidigeSensor.optimaalMin.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                    </text>
+                  </g>
+
+                  {/* BOVENGRENS LIJN MET DUIDELIJKE BADGE OP DE RECHTER AS */}
+                  <g>
+                    <line
+                      x1={padding.left}
+                      y1={alarmY}
+                      x2={chartWidth - padding.right}
+                      y2={alarmY}
+                      stroke="#b45309"
+                      strokeWidth="1.5"
+                      strokeDasharray="6,4"
+                    />
+                    <rect
+                      x={chartWidth - padding.right + 6}
+                      y={alarmY - 9}
+                      width="54"
+                      height="18"
+                      rx="4"
+                      fill="#b45309"
+                    />
+                    <text
+                      x={chartWidth - padding.right + 33}
+                      y={alarmY + 3.5}
+                      textAnchor="middle"
+                      fontSize="10"
+                      fontWeight="700"
+                      fill="#ffffff"
+                    >
+                      {huidigeSensor.defaultGrens.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                    </text>
+                  </g>
+
 
                   {/* X-AS DATUMLABELS */}
                   {meetData.map((d, i) => (
