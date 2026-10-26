@@ -1043,14 +1043,129 @@ export default function SensordataPage() {
                     </text>
                   </g>
 
-
                   {/* X-AS DATUMLABELS */}
-                  {meetData.map((d, i) => (
-                    <text key={i} x={getXPos(i)} y={chartHeight - padding.bottom + 22} textAnchor="middle" fontSize="11" fill="#94a3b8">{d.datum}</text>
-                  ))}
+                  {meetData.map((d, i) => {
+                    if (meetData.length > 10 && i % 2 !== 0 && i !== meetData.length - 1) return null;
+                    const x = getXPos(i);
+                    return (
+                      <text
+                        key={i}
+                        x={x}
+                        y={chartHeight - padding.bottom + 22}
+                        textAnchor="middle"
+                        fontSize="11"
+                        fill={darkMode ? '#64748b' : '#94a3b8'}
+                      >
+                        {d.datum}
+                      </text>
+                    );
+                  })}
                 </svg>
+
+                {/* SLIMME HOVER TOOLTIP */}
+                {hoveredPoint && (() => {
+                  const isNearTop = hoveredPoint.y < 85;
+                  return (
+                    <div
+                      className={`pointer-events-none absolute z-30 rounded-xl border border-slate-700/80 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-xs transition-all`}
+                      style={{
+                        left: `${(hoveredPoint.x / chartWidth) * 100}%`,
+                        top: `${(hoveredPoint.y / chartHeight) * 100}%`,
+                        transform: isNearTop ? 'translate(-50%, 14px)' : 'translate(-50%, calc(-100% - 14px))',
+                      }}
+                    >
+                      <p className="font-medium text-slate-300">{hoveredPoint.datum}</p>
+                      <p className="text-sm font-bold text-white">
+                        {hoveredPoint.waarde} {huidigeSensor.eenheid}
+                      </p>
+                      <p className={`mt-0.5 text-[11px] ${hoveredPoint.isOverschrijding ? 'font-semibold text-amber-400' : 'text-emerald-400'}`}>
+                        {hoveredPoint.isOverschrijding ? '⚠ ' : '✓ '}{hoveredPoint.statusText}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
+
+            {/* DE 4 KALME DATACARDS */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              
+              {/* KAART 1: GEMIDDELDE */}
+              <article
+                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
+                  darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                }`}
+              >
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Gemiddelde
+                </span>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {statistieken.avg.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  +0,8{huidigeSensor.eenheid} t.o.v. vorige periode
+                </p>
+              </article>
+
+              {/* KAART 2: MINIMUM */}
+              <article
+                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
+                  darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                }`}
+              >
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Minimale waarde
+                </span>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {statistieken.min.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Laagste punt in geselecteerde periode
+                </p>
+              </article>
+
+              {/* KAART 3: MAXIMUM */}
+              <article
+                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
+                  darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                }`}
+              >
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Maximale waarde
+                </span>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {statistieken.max.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Hoogste punt in geselecteerde periode
+                </p>
+              </article>
+
+              {/* KAART 4: GRENSOVERSCHRIJDINGEN */}
+              <article
+                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
+                  statistieken.overschrijdingen > 0
+                    ? darkMode
+                      ? 'border-amber-900/40 bg-amber-950/15'
+                      : 'border-amber-200/80 bg-amber-50/40'
+                    : darkMode
+                    ? 'border-slate-800 bg-slate-800/90'
+                    : 'border-slate-200/80 bg-white'
+                }`}
+              >
+                <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                  Grensoverschrijdingen
+                </span>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
+                  {statistieken.overschrijdingen}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  2 minder dan vorige periode
+                </p>
+              </article>
+
+            </div>
+
           </section>
         </div>
       </main>
