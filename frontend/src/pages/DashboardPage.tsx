@@ -51,6 +51,10 @@ export default function DashboardPage() {
 
   // Navigatie. Beheer en Sensordata zijn eigen pagina's; de rest is tijdelijk.
   function handleNavigation(page: string) {
+    if (page === 'Waarschuwingen') {
+      window.location.assign('/waarschuwingen');
+      return;
+    }
     if (page === 'Beheer') {
       window.location.assign('/beheer');
       return;
