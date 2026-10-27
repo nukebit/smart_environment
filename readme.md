@@ -161,6 +161,21 @@ Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodi
 | PUT | `/api/users/{id}` | Beheerder | Naam, e-mail en rol wijzigen |
 | DELETE | `/api/users/{id}` | Beheerder | Account verwijderen (niet je eigen account) |
 
+### Lokaalbeheer – `backend/Lokalen/LokaalEndpoints.cs`
+
+Alle routes vereisen de rol **Beheerder**. POST, PUT en DELETE vereisen ook een CSRF-token.
+
+| Method | Route | Doel |
+|---|---|---|
+| GET | `/api/lokalen` | Lokalen uit SQLite laden |
+| GET | `/api/lokalen/{id}` | Eén lokaal bekijken |
+| POST | `/api/lokalen` | Lokaal toevoegen (`naam`, `gebouw`) |
+| PUT | `/api/lokalen/{id}` | Lokaalgegevens wijzigen |
+| DELETE | `/api/lokalen/{id}` | Lokaal verwijderen |
+
+Een lokaalnaam is uniek binnen een gebouw (hoofdletters maken geen verschil).
+Dubbele invoer geeft **409**; ongeldige invoer geeft **400**.
+
 Statuscodes: **401** = niet ingelogd · **403** = geen rechten · **400** = ongeldige invoer of CSRF-token.
 
 ---
