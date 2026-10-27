@@ -42,13 +42,21 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
       return;
     }
 
-    // Op het dashboard regelt het dashboard zelf de andere tabbladen.
+    if (page === 'Sensordata') {
+      if (activePage !== 'Sensordata') window.location.assign('/sensordata');
+      return;
+    }
+
+    if (page === 'Dashboard') {
+      if (activePage !== 'Dashboard') window.location.assign('/dashboard');
+      return;
+    }
+
     if (onNavigate) {
       onNavigate(page);
       return;
     }
 
-    // Vanaf een andere pagina (zoals Beheer) terug naar het dashboard.
     window.location.assign('/dashboard');
   }
 

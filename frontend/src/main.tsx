@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import SensordataPage from './pages/SensordataPage';
 import BeheerPage from './pages/BeheerPage';
 import WaarschuwingenPage from './pages/WaarschuwingenPage';
 import './index.css';
@@ -14,6 +15,8 @@ if (rootElement !== null) {
   // Choose the page based on the URL.
   if (path === '/dashboard') {
     root.render(<DashboardPage />);
+  } else if (path === '/sensordata') {
+    root.render(<SensordataPage />);
   } else if (path === '/beheer') {
     root.render(<BeheerPage />);
   } else if (path === '/waarschuwingen') {
