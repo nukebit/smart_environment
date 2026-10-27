@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartEnvironment.Api.Auth;
 using SmartEnvironment.Api.Data;
+using SmartEnvironment.Api.Sensors;
 using SmartEnvironment.Api.Users;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,10 @@ builder.Services.AddDbContext<AuthDbContext>(options => options.UseSqlite(connec
 
 // 3. Add the login system. Its settings are grouped in AuthSetup.cs.
 AuthSetup.Configure(builder);
+
+// 4. Add sensor services (Urban Sense API integration and in-memory cache).
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<UrbanSenseService>();
 
 var app = builder.Build();
 
@@ -38,6 +43,7 @@ app.UseRateLimiter();           // Check the limit on login attempts.
 // 6. Connect API URLs to Minimal API endpoints and page URLs to React.
 app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
 app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
+app.MapSensorEndpoints();       // /api/sensors/... (see Sensors/SensorEndpoints.cs)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
