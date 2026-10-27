@@ -106,6 +106,7 @@ Installeer in VS Code de extensie **SQLite Viewer** (Florian Klampfer) en klik o
 | `AspNetUsers` | Accounts: e-mail, wachtwoord-**hash**, `FullName`, `LastLoginAt` (UTC) |
 | `AspNetRoles` | De rollen `Beheerder` en `Docent` |
 | `AspNetUserRoles` | Welke gebruiker welke rol heeft |
+| `Lokalen` | Lokalen: naam en gebouw |
 | `__EFMigrationsHistory` | Welke migrations zijn uitgevoerd |
 
 Wijzig niets in de tabellen terwijl de backend draait. Accounts beheer je via de Beheer-pagina.

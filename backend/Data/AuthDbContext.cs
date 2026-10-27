@@ -11,4 +11,17 @@ public class AuthDbContext : IdentityDbContext<AppUser>
     public AuthDbContext(DbContextOptions<AuthDbContext> options) : base(options)
     {
     }
+
+    public DbSet<Lokaal> Lokalen => Set<Lokaal>();
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+
+        var lokaal = builder.Entity<Lokaal>();
+        lokaal.Property(item => item.Naam).UseCollation("NOCASE");
+        lokaal.Property(item => item.Gebouw).UseCollation("NOCASE");
+        // Een lokaalnaam mag maar een keer voorkomen binnen hetzelfde gebouw.
+        lokaal.HasIndex(item => new { item.Gebouw, item.Naam }).IsUnique();
+    }
 }
