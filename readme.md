@@ -53,7 +53,7 @@ cd backend
 dotnet run
 ```
 
-Wacht tot je `Now listening on: http://localhost:5000` ziet.
+Wacht tot je `Now listening on: http://localhost:5080` ziet.
 
 **Terminal 2 – frontend**
 
@@ -138,7 +138,7 @@ Zet de nieuwe bestanden in `Migrations` mee in je commit.
 
 ## API
 
-Base URL: `http://localhost:5000`. De frontend gebruikt `/api/...`; Vite stuurt dat door naar de backend.
+Base URL: `http://localhost:5080`. De frontend gebruikt `/api/...`; Vite stuurt dat door naar de backend.
 
 Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodig in de header `X-CSRF-TOKEN`. Haal die op met `GET /api/auth/csrf`. De frontend regelt dit zelf.
 
@@ -232,7 +232,7 @@ dotnet user-secrets set "UrbanSense:ApiKey" "KEY-UIT-DE-MAIL-VAN-DE-DOCENT"
 |---|---|
 | `npm.ps1 cannot be loaded because running scripts is disabled` | Eenmalig: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, of gebruik `npm.cmd` |
 | Inloggen lukt niet (401) met het juiste wachtwoord | Controleer de user-secrets (stap 2), verwijder `auth.db` en start de backend opnieuw |
-| Backend start niet: `table "AspNetUsers" already exists` | Je hebt een oude database van vóór de migrations. Verwijder `auth.db`, `auth.db-shm` en `auth.db-wal` |
-| `Port 5000 is already in use` | Er draait al een backend. Stop die met **Ctrl+C** of sluit de oude terminal |
+| Backend start niet: `table "AspNetUsers" already exists` | Je hebt een oude database van vóór de migrations. Maak eerst een back-up en werk het schema bij met behoud van accounts |
+| `Port 5080 is already in use` | Er draait al een backend. Stop die met **Ctrl+C** of sluit de oude terminal |
 | `/api/...` geeft 401 terwijl je ingelogd bent | Je hebt de link vanuit een andere site geopend. **Typ** het adres zelf in de adresbalk (de cookie is `SameSite=Strict`) |
 | `dotnet ef` wordt niet herkend | Na `dotnet tool install --global dotnet-ef` de terminal sluiten en een nieuwe openen |

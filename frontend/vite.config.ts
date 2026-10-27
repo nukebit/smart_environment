@@ -8,7 +8,7 @@ export default defineConfig({
     host: 'localhost',
     port: 5173,
     strictPort: true,
-    proxy: { '/api': 'http://localhost:5000' },
+    proxy: { '/api': 'http://localhost:5080' },
   },
   build: {
     outDir: '../backend/wwwroot',
