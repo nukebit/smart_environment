@@ -19,10 +19,11 @@ public static class AuthSetup
         ConfigureLoginLimit(builder);
     }
 
-    // Identity saves users in SQLite and handles password hashing and account lockout.
+    // Identity saves users and roles in SQLite and handles password hashing and account lockout.
     private static void ConfigureAccounts(WebApplicationBuilder builder)
     {
-        var identity = builder.Services.AddIdentityCore<IdentityUser>(options =>
+        // NIEUW: AppUser instead of IdentityUser (adds FullName and LastLoginAt).
+        var identity = builder.Services.AddIdentityCore<AppUser>(options =>
         {
             options.User.RequireUniqueEmail = true;
             options.Password.RequiredLength = 12;
@@ -42,6 +43,9 @@ public static class AuthSetup
             options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
         });
 
+        // NIEUW: turn on roles (Beheerder, Docent). The role is stored in the login cookie,
+        // so the backend can check it on every request. Must come before AddEntityFrameworkStores.
+        identity.AddRoles<IdentityRole>();
         identity.AddEntityFrameworkStores<AuthDbContext>();
         identity.AddSignInManager();
     }

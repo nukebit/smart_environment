@@ -1,1 +1,17 @@
 @import "tailwindcss";
+@theme {
+  --color-brand: #0f6e56;
+  --color-brand-dark: #0b5846;
+}
+
+/* Donker thema: dark:-classes werken als <html> de class "dark" heeft (zie useDarkMode.ts). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tailwind v4 geeft knoppen standaard een gewone pijl als cursor.
+   Hiermee krijgen alle klikbare knoppen het handje. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

@@ -1,16 +1,11 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartEnvironment.Api.Auth;
 using SmartEnvironment.Api.Data;
+using SmartEnvironment.Api.Users;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Add API controllers and automatically check CSRF tokens on POST requests.
-// WithViews is needed for the built-in CSRF filter; the pages are still React.
-builder.Services.AddControllersWithViews(options =>
-{
-    options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
-});
+// 1. Send errors as standard JSON (ProblemDetails) instead of an HTML error page.
 builder.Services.AddProblemDetails();
 
 // 2. Connect to the database specified in appsettings.json.
@@ -22,7 +17,7 @@ AuthSetup.Configure(builder);
 
 var app = builder.Build();
 
-// 4. Create the database and first account if needed.
+// 4. Create the database, roles and first account if needed.
 await AuthDatabase.InitializeAsync(app.Services, app.Configuration);
 
 // 5. Set up how incoming requests are handled.
@@ -40,8 +35,9 @@ app.UseAuthentication();        // Read the login cookie to identify the user.
 app.UseAuthorization();         // Check whether the user can access the endpoint.
 app.UseRateLimiter();           // Check the limit on login attempts.
 
-// 6. Connect API URLs to controllers and page URLs to React.
-app.MapControllers();
+// 6. Connect API URLs to Minimal API endpoints and page URLs to React.
+app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
+app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
