@@ -29,7 +29,7 @@ export default function LoginPage() {
       if (!response.ok) throw new Error();
       window.location.replace('/dashboard');
     } catch {
-      setError('Login failed. Check your email and password and try again.');
+      setError('E-mailadres of wachtwoord is onjuist.');
     } finally {
       setBusy(false);
     }
@@ -95,17 +95,6 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
-          </div>
-
-          <div className="space-y-2 text-sm text-slate-600">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="rememberEmail" className="h-4 w-4 rounded accent-brand" />
-              E-mail onthouden
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="stayLoggedIn" className="h-4 w-4 rounded accent-brand" />
-              Ingelogd blijven (30 dagen)
-            </label>
           </div>
 
           <button
