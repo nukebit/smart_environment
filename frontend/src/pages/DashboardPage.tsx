@@ -49,8 +49,12 @@ export default function DashboardPage() {
       );
   }, []);
 
-  // Navigatie. Beheer en Sensordata zijn eigen pagina's; de rest is tijdelijk.
+  // Open de gekozen pagina vanuit een dashboardkaart.
   function handleNavigation(page: string) {
+    if (page === 'Lokalen') {
+      window.location.assign('/lokalen');
+      return;
+    }
     if (page === 'Waarschuwingen') {
       window.location.assign('/waarschuwingen');
       return;
@@ -139,9 +143,9 @@ export default function DashboardPage() {
     },
   ];
 
-  // Een Docent ziet de kaart "Beheer" niet (de backend weigert hem ook zelf).
+  // Beheer en lokaalbeheer zijn alleen zichtbaar voor beheerders.
   const zichtbareKaarten = kaarten.filter(
-    kaart => isBeheerder || kaart.pagina !== 'Beheer'
+    kaart => isBeheerder || !['Beheer', 'Lokalen'].includes(kaart.pagina)
   );
 
   const iconKleuren: Record<string, string> = {
@@ -219,7 +223,7 @@ export default function DashboardPage() {
             </span>
           </div>
 
-          {/* DASHBOARDKAARTEN (een Docent ziet er drie, een Beheerder vier) */}
+          {/* DASHBOARDKAARTEN */}
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {zichtbareKaarten.map(kaart => {
               const Icon = kaart.icon;

@@ -7,7 +7,7 @@ import { Leaf, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
 const navigatie = ['Dashboard', 'Sensordata', 'Lokalen', 'Waarschuwingen', 'Beheer'];
 
 // Pagina's die alleen een Beheerder mag zien.
-const alleenBeheerder = ['Beheer'];
+const alleenBeheerder = ['Beheer', 'Lokalen'];
 
 type Props = {
   activePage: string;                   // Welk tabblad groen is, bijvoorbeeld 'Beheer'.
@@ -22,14 +22,18 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  // Een Docent ziet het tabblad "Beheer" niet.
-  // Let op: dit is alleen voor het gemak. De backend weigert een Docent ook zelf (403).
+  // Beheer en lokaalbeheer zijn alleen zichtbaar voor beheerders.
   const zichtbareNavigatie = navigatie.filter(
     page => role === 'Beheerder' || !alleenBeheerder.includes(page)
   );
 
   function handleNavigation(page: string) {
     setMenuOpen(false);
+
+    if (page === 'Lokalen') {
+      if (activePage !== 'Lokalen') window.location.assign('/lokalen');
+      return;
+    }
 
     if (page === 'Waarschuwingen') {
       if (activePage !== page) window.location.assign('/waarschuwingen');

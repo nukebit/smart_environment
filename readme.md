@@ -79,7 +79,7 @@ Log in met het account uit stap 2 (`example@test.com` / `password`).
 
 | Rol | Ziet | Mag |
 |---|---|---|
-| **Beheerder** | Dashboard + **Beheer** | Accounts aanmaken, bewerken en verwijderen |
+| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts en lokalen beheren |
 | **Docent** | Dashboard | Gegevens bekijken, geen toegang tot Beheer |
 
 Op **Beheer** (`/beheer`) maakt een beheerder accounts aan voor docenten.
@@ -134,6 +134,23 @@ dotnet run
 ```
 
 Zet de nieuwe bestanden in `Migrations` mee in je commit.
+
+---
+
+## Lokalen beheren
+
+De pagina **Lokalen** (`/lokalen`) is beschikbaar voor beheerders.
+Je kunt het overzicht bekijken, een lokaal toevoegen, de gegevens wijzigen en een lokaal verwijderen.
+Een lokaal heeft een naam en een gebouw. Verwijderen vraagt om bevestiging.
+
+De lokalen staan in de tabel **`Lokalen`** in dezelfde **`backend/auth.db`** als de accounts.
+Bij het starten voert de backend de migration **`AddLokalen`** automatisch uit.
+Bij het openen van de pagina worden de lokalen uit deze database ingeladen.
+Toevoegen, wijzigen en verwijderen worden direct in SQLite opgeslagen en blijven na een herstart bewaard.
+Alle beheerders op dezelfde backend zien hetzelfde overzicht. Iedere laptop heeft zijn eigen database.
+De tabel begint leeg; voeg via de pagina de lokalen van je school toe.
+
+De backend en de frontend-proxy gebruiken poort **5080**; op macOS kan poort 5000 al bezet zijn.
 
 ---
 
