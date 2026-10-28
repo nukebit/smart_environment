@@ -19,12 +19,16 @@ const sensorData = {
   luchtdruk: '1013',
 };
 
+type Lokaal = { id: number; naam: string; gebouw: string };
+
 export default function DashboardPage() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
   const [error, setError] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode(); // Wordt onthouden tussen pagina's.
   const [activePage, setActivePage] = useState('Dashboard');
+  const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
+  const [lokalenError, setLokalenError] = useState('');
 
   // Controleer of de gebruiker is ingelogd.
   useEffect(() => {
@@ -49,6 +53,27 @@ export default function DashboardPage() {
       );
   }, []);
 
+  // De lokalenkaart gebruikt hetzelfde overzicht als de lokalenpagina.
+  useEffect(() => {
+    if (role !== 'Beheerder') return;
+    const controller = new AbortController();
+
+    fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        if (response.status === 401) {
+          window.location.replace('/login');
+          return;
+        }
+        if (!response.ok) throw new Error();
+        setLokalen(await response.json());
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Open het overzicht om opnieuw te proberen.');
+      });
+
+    return () => controller.abort();
+  }, [role]);
+
   // Open de gekozen pagina vanuit een dashboardkaart.
   function handleNavigation(page: string) {
     if (page === 'Lokalen') {
@@ -71,6 +96,7 @@ export default function DashboardPage() {
   }
 
   const isBeheerder = role === 'Beheerder';
+  const aantalGebouwen = new Set(lokalen?.map(lokaal => lokaal.gebouw.trim().toLocaleLowerCase('nl')) ?? []).size;
 
   const kaarten = [
     {
@@ -97,14 +123,21 @@ export default function DashboardPage() {
       pagina: 'Sensordata',
     },
     {
-      titel: 'Lokalen Overzicht',
-      beschrijving: 'Actuele klimaatstatus per ruimte',
+      titel: 'Lokalenoverzicht',
+      beschrijving: 'Bekijk en beheer de lokalen',
       detail: (
-        <div className="rounded-lg border-l-2 border-blue-600 bg-slate-50 p-3">
-          <p className="font-semibold">12 lokalen gekoppeld</p>
-          <p className="mt-1 text-xs text-slate-500">
-            1 te warm · Lokaal 2.14
-          </p>
+        <div className="rounded-lg border-l-2 border-blue-600 bg-slate-50 p-3 dark:bg-slate-900/60 dark:text-slate-100">
+          {lokalenError ? <p role="alert" className="text-sm text-red-700 dark:text-red-400">{lokalenError}</p>
+            : lokalen === null ? <p role="status" className="text-sm text-slate-500 dark:text-slate-400">Lokalen laden…</p>
+            : <>
+              <p className="font-semibold">
+                {aantalGebouwen} {aantalGebouwen === 1 ? 'gebouw' : 'gebouwen'} · {lokalen.length} {lokalen.length === 1 ? 'lokaal' : 'lokalen'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {lokalen.length === 0 ? 'Voeg je eerste lokaal toe.'
+                  : `${lokalen.slice(0, 3).map(lokaal => lokaal.naam).join(' · ')}${lokalen.length > 3 ? ` · en ${lokalen.length - 3} meer` : ''}`}
+              </p>
+            </>}
         </div>
       ),
       icon: Building2,
@@ -261,7 +294,7 @@ export default function DashboardPage() {
                     onClick={() => handleNavigation(kaart.pagina)}
                     className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
                   >
-                    Bekijk <ArrowRight size={16} />
+                    {kaart.pagina === 'Lokalen' ? 'Lokalen beheren' : 'Bekijk'} <ArrowRight size={16} />
                   </button>
                 </article>
               );
