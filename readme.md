@@ -148,7 +148,11 @@ Bij het starten voert de backend de migration **`AddLokalen`** automatisch uit.
 Bij het openen van de pagina worden de lokalen uit deze database ingeladen.
 Toevoegen, wijzigen en verwijderen worden direct in SQLite opgeslagen en blijven na een herstart bewaard.
 Alle beheerders op dezelfde backend zien hetzelfde overzicht. Iedere laptop heeft zijn eigen database.
-De tabel begint leeg; voeg via de pagina de lokalen van je school toe.
+Als de tabel leeg is, voegt de backend bij het starten drie voorbeeldlokalen toe:
+**1.02**, **2.14** en **3.05** in **Voorbeeldgebouw**. Je kunt deze via de pagina aanpassen of verwijderen.
+Bestaande lokalen worden behouden; een volgende start voegt geen dubbele lokalen toe.
+Als je alle lokalen verwijdert, worden bij de volgende backend-start opnieuw de startgegevens toegevoegd.
+Hiervoor is geen nieuwe migration nodig, omdat de tabelstructuur gelijk blijft.
 
 De backend en de frontend-proxy gebruiken poort **5080**; op macOS kan poort 5000 al bezet zijn.
 
