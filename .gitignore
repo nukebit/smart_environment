@@ -7,3 +7,6 @@ obj/
 *.db-wal
 .vs/
 .vscode/
+.env
+.env.*
+!.env.example

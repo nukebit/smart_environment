@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartEnvironment.Api.Auth;
 using SmartEnvironment.Api.Data;
 using SmartEnvironment.Api.Users;
+using SmartEnvironment.Api.Lokalen;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +39,7 @@ app.UseRateLimiter();           // Check the limit on login attempts.
 // 6. Connect API URLs to Minimal API endpoints and page URLs to React.
 app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
 app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
+app.MapLokaalEndpoints();       // /api/lokalen/... (alleen Beheerder)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 

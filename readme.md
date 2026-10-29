@@ -53,7 +53,7 @@ cd backend
 dotnet run
 ```
 
-Wacht tot je `Now listening on: http://localhost:5000` ziet.
+Wacht tot je `Now listening on: http://localhost:5080` ziet.
 
 **Terminal 2 – frontend**
 
@@ -79,7 +79,7 @@ Log in met het account uit stap 2 (`example@test.com` / `password`).
 
 | Rol | Ziet | Mag |
 |---|---|---|
-| **Beheerder** | Dashboard + **Beheer** | Accounts aanmaken, bewerken en verwijderen |
+| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts en lokalen beheren |
 | **Docent** | Dashboard | Gegevens bekijken, geen toegang tot Beheer |
 
 Op **Beheer** (`/beheer`) maakt een beheerder accounts aan voor docenten.
@@ -106,6 +106,7 @@ Installeer in VS Code de extensie **SQLite Viewer** (Florian Klampfer) en klik o
 | `AspNetUsers` | Accounts: e-mail, wachtwoord-**hash**, `FullName`, `LastLoginAt` (UTC) |
 | `AspNetRoles` | De rollen `Beheerder` en `Docent` |
 | `AspNetUserRoles` | Welke gebruiker welke rol heeft |
+| `Lokalen` | Lokalen: naam en gebouw |
 | `__EFMigrationsHistory` | Welke migrations zijn uitgevoerd |
 
 Wijzig niets in de tabellen terwijl de backend draait. Accounts beheer je via de Beheer-pagina.
@@ -136,9 +137,30 @@ Zet de nieuwe bestanden in `Migrations` mee in je commit.
 
 ---
 
+## Lokalen beheren
+
+De pagina **Lokalen** (`/lokalen`) is beschikbaar voor beheerders.
+Je kunt het overzicht bekijken, een lokaal toevoegen, de gegevens wijzigen en een lokaal verwijderen.
+Een lokaal heeft een naam en een gebouw. Verwijderen vraagt om bevestiging.
+
+De lokalen staan in de tabel **`Lokalen`** in dezelfde **`backend/auth.db`** als de accounts.
+Bij het starten voert de backend de migration **`AddLokalen`** automatisch uit.
+Bij het openen van de pagina worden de lokalen uit deze database ingeladen.
+Toevoegen, wijzigen en verwijderen worden direct in SQLite opgeslagen en blijven na een herstart bewaard.
+Alle beheerders op dezelfde backend zien hetzelfde overzicht. Iedere laptop heeft zijn eigen database.
+Als de tabel leeg is, voegt de backend bij het starten drie voorbeeldlokalen toe:
+**1.02**, **2.14** en **3.05** in **Voorbeeldgebouw**. Je kunt deze via de pagina aanpassen of verwijderen.
+Bestaande lokalen worden behouden; een volgende start voegt geen dubbele lokalen toe.
+Als je alle lokalen verwijdert, worden bij de volgende backend-start opnieuw de startgegevens toegevoegd.
+Hiervoor is geen nieuwe migration nodig, omdat de tabelstructuur gelijk blijft.
+
+De backend en de frontend-proxy gebruiken poort **5080**; op macOS kan poort 5000 al bezet zijn.
+
+---
+
 ## API
 
-Base URL: `http://localhost:5000`. De frontend gebruikt `/api/...`; Vite stuurt dat door naar de backend.
+Base URL: `http://localhost:5080`. De frontend gebruikt `/api/...`; Vite stuurt dat door naar de backend.
 
 Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodig in de header `X-CSRF-TOKEN`. Haal die op met `GET /api/auth/csrf`. De frontend regelt dit zelf.
 
@@ -159,6 +181,21 @@ Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodi
 | POST | `/api/users` | Beheerder | Account aanmaken (`fullName`, `email`, `role`, `password`) |
 | PUT | `/api/users/{id}` | Beheerder | Naam, e-mail en rol wijzigen |
 | DELETE | `/api/users/{id}` | Beheerder | Account verwijderen (niet je eigen account) |
+
+### Lokaalbeheer – `backend/Lokalen/LokaalEndpoints.cs`
+
+Alle routes vereisen de rol **Beheerder**. POST, PUT en DELETE vereisen ook een CSRF-token.
+
+| Method | Route | Doel |
+|---|---|---|
+| GET | `/api/lokalen` | Lokalen uit SQLite laden |
+| GET | `/api/lokalen/{id}` | Eén lokaal bekijken |
+| POST | `/api/lokalen` | Lokaal toevoegen (`naam`, `gebouw`) |
+| PUT | `/api/lokalen/{id}` | Lokaalgegevens wijzigen |
+| DELETE | `/api/lokalen/{id}` | Lokaal verwijderen |
+
+Een lokaalnaam is uniek binnen een gebouw (hoofdletters maken geen verschil).
+Dubbele invoer geeft **409**; ongeldige invoer geeft **400**.
 
 Statuscodes: **401** = niet ingelogd · **403** = geen rechten · **400** = ongeldige invoer of CSRF-token.
 
@@ -232,7 +269,7 @@ dotnet user-secrets set "UrbanSense:ApiKey" "KEY-UIT-DE-MAIL-VAN-DE-DOCENT"
 |---|---|
 | `npm.ps1 cannot be loaded because running scripts is disabled` | Eenmalig: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, of gebruik `npm.cmd` |
 | Inloggen lukt niet (401) met het juiste wachtwoord | Controleer de user-secrets (stap 2), verwijder `auth.db` en start de backend opnieuw |
-| Backend start niet: `table "AspNetUsers" already exists` | Je hebt een oude database van vóór de migrations. Verwijder `auth.db`, `auth.db-shm` en `auth.db-wal` |
-| `Port 5000 is already in use` | Er draait al een backend. Stop die met **Ctrl+C** of sluit de oude terminal |
+| Backend start niet: `table "AspNetUsers" already exists` | Je hebt een oude database van vóór de migrations. Maak eerst een back-up en werk het schema bij met behoud van accounts |
+| `Port 5080 is already in use` | Er draait al een backend. Stop die met **Ctrl+C** of sluit de oude terminal |
 | `/api/...` geeft 401 terwijl je ingelogd bent | Je hebt de link vanuit een andere site geopend. **Typ** het adres zelf in de adresbalk (de cookie is `SameSite=Strict`) |
 | `dotnet ef` wordt niet herkend | Na `dotnet tool install --global dotnet-ef` de terminal sluiten en een nieuwe openen |
