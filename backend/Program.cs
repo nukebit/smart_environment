@@ -2,12 +2,20 @@ using Microsoft.EntityFrameworkCore;
 using SmartEnvironment.Api.Auth;
 using SmartEnvironment.Api.Data;
 using SmartEnvironment.Api.Users;
+using SmartEnvironment.Api.Weather;
 using SmartEnvironment.Api.Lokalen;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Send errors as standard JSON (ProblemDetails) instead of an HTML error page.
 builder.Services.AddProblemDetails();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("OpenMeteo", client =>
+{
+    client.BaseAddress = new Uri("https://api.open-meteo.com/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddSingleton<WeatherService>();
 
 // 2. Connect to the database specified in appsettings.json.
 string? connectionString = builder.Configuration.GetConnectionString("Auth");
@@ -39,6 +47,7 @@ app.UseRateLimiter();           // Check the limit on login attempts.
 // 6. Connect API URLs to Minimal API endpoints and page URLs to React.
 app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
 app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
+app.MapWeatherEndpoints();
 app.MapLokaalEndpoints();       // /api/lokalen/... (alleen Beheerder)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();

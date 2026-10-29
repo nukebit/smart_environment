@@ -3,8 +3,6 @@ import {
   Download,
   RotateCcw,
   CloudSun,
-  Droplets,
-  Wind,
   AlertTriangle,
   Building,
   MapPin,
@@ -12,10 +10,11 @@ import {
   Activity,
   LineChart,
   BarChart3,
-  RefreshCw,
   Info,
 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
+import WeatherValues, { weatherTime } from '../components/WeatherValues';
+import { useWeather } from '../hooks/useWeather';
 import { useDarkMode } from '../hooks/useDarkMode';
 
 // Gebouwen met bijbehorende lokalen
@@ -85,14 +84,6 @@ const periodes = [
   { id: '3m', label: 'Afgelopen 3 maanden', datumTekst: '15 februari – 14 mei 2025' },
 ];
 
-type WeatherData = {
-  temp: number;
-  humidity: number;
-  windSpeed: number;
-  isRealApi: boolean;
-  timestamp: string;
-};
-
 export default function SensordataPage() {
   const [role, setRole] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode();
@@ -117,9 +108,7 @@ export default function SensordataPage() {
     statusText: string;
   } | null>(null);
 
-  // Open-Meteo actuele weerdata
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [weatherLoading, setWeatherLoading] = useState(true);
+  const { weather, error: weatherError } = useWeather(Boolean(role));
 
   // Sessie controle
   useEffect(() => {
@@ -175,45 +164,6 @@ export default function SensordataPage() {
     if (geselecteerdePeriode !== '3m') count++;
     return count > 0 ? `${count} actief` : 'Standaard';
   }, [geselecteerdGebouw, geselecteerdLokaal, geselecteerdSensortype, geselecteerdePeriode]);
-
-  // Open-Meteo call
-  const fetchOpenMeteo = () => {
-    setWeatherLoading(true);
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=51.92&longitude=4.47&current=temperature_2m,relative_humidity_2m,wind_speed_10m')
-      .then(res => {
-        if (!res.ok) throw new Error();
-        return res.json();
-      })
-      .then(data => {
-        if (data && data.current) {
-          const nu = new Date();
-          const tijdstr = nu.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-          setWeather({
-            temp: Math.round(data.current.temperature_2m * 10) / 10,
-            humidity: Math.round(data.current.relative_humidity_2m),
-            windSpeed: Math.round(data.current.wind_speed_10m * 10) / 10,
-            isRealApi: true,
-            timestamp: tijdstr,
-          });
-        }
-      })
-      .catch(() => {
-        setWeather({
-          temp: 14.8,
-          humidity: 68,
-          windSpeed: 12.5,
-          isRealApi: false,
-          timestamp: 'Historische norm',
-        });
-      })
-      .finally(() => {
-        setWeatherLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    fetchOpenMeteo();
-  }, []);
 
   // Dataset generatie per periode
   const meetData = useMemo(() => {
@@ -538,75 +488,19 @@ export default function SensordataPage() {
           </button>
         </div>
 
-        {/* OPEN-METEO WEERBALK: RUSTIG, WIJDER EN MET DUIDELIJKE AANWEZIGHEID */}
-        {weather && (
-          <section
-            className={`mb-6 rounded-2xl border px-5 py-3.5 shadow-2xs transition ${
-              darkMode
-                ? 'border-slate-800 bg-slate-800/80 text-slate-200'
-                : 'border-slate-200/90 bg-white text-slate-700'
-            }`}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              {/* Linkerzijde: titel en bron */}
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
-                  <CloudSun size={20} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Buitencondities
-                    </span>
-                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-300">
-                      Meting {weather.timestamp}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Klimaatcontext buiten t.o.v. binnen in {geselecteerdGebouw}
-                  </p>
-                </div>
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-2xs dark:border-slate-800 dark:bg-slate-800/80" aria-label="Buitencondities Den Haag">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
+                <CloudSun size={20} aria-hidden="true" />
               </div>
-
-              {/* Rechterzijde: duidelijk afleesbare buitenwaarden */}
-              <div className="flex flex-wrap items-center gap-5 sm:gap-6 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Buitentemperatuur:</span>
-                  <span className="text-base font-bold text-slate-900 dark:text-white">
-                    {weather.temp}°C
-                  </span>
-                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                    Binnen {statistieken.avg > weather.temp ? `+${(statistieken.avg - weather.temp).toFixed(1)}°C warmer` : `${(statistieken.avg - weather.temp).toFixed(1)}°C`}
-                  </span>
-                </div>
-
-                <div className="hidden h-4 w-px bg-slate-200 sm:block dark:bg-slate-700" />
-
-                <div className="flex items-center gap-2">
-                  <Droplets size={16} className="text-blue-500" />
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Luchtvochtigheid:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">{weather.humidity}% RV</span>
-                </div>
-
-                <div className="hidden h-4 w-px bg-slate-200 md:block dark:bg-slate-700" />
-
-                <div className="hidden items-center gap-2 md:flex">
-                  <Wind size={16} className="text-teal-500" />
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Wind:</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-300">{weather.windSpeed} km/u</span>
-                </div>
-
-                <button
-                  onClick={fetchOpenMeteo}
-                  title="Ververs actuele weerdata via Open-Meteo"
-                  className="cursor-pointer rounded-lg border border-slate-200 p-1.5 text-slate-400 transition hover:border-slate-300 hover:text-emerald-600 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-emerald-400"
-                >
-                  <RefreshCw size={13} className={weatherLoading ? 'animate-spin' : ''} />
-                </button>
-              </div>
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">Buitencondities</span>
+              {weather && <span title="Tijd van de weergegevens · Den Haag" className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-300">{weatherTime(weather.time)}</span>}
+              <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:underline dark:text-slate-400">Open-Meteo</a>
             </div>
-          </section>
-        )}
+            {weather ? <WeatherValues weather={weather} includeWind /> : <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{weatherError || 'Weergegevens laden…'}</p>}
+          </div>
+        </section>
 
         {/* HOOFDINDELING */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
