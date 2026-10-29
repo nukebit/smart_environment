@@ -8,19 +8,22 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
+import WeatherValues, { weatherTime } from '../components/WeatherValues';
+import { useWeather } from '../hooks/useWeather';
 import { useDarkMode } from '../hooks/useDarkMode';
 
 // Tijdelijke voorbeeldgegevens.
 // Later vervangen we deze door gegevens uit de backend.
 const sensorData = {
   lokaal: '2.14',
-  temperatuur: '24,8°C',
-  luchtvochtigheid: '48%',
-  luchtdruk: '1013',
+  temperatuur: 24.8,
+  luchtvochtigheid: 48,
+  luchtdruk: 1013,
 };
 
 export default function DashboardPage() {
   const [email, setEmail] = useState('');
+  const { weather, error: weatherError } = useWeather(Boolean(email));
   const [role, setRole] = useState('');
   const [error, setError] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode(); // Wordt onthouden tussen pagina's.
@@ -71,21 +74,24 @@ export default function DashboardPage() {
   const kaarten = [
     {
       titel: 'Sensordata & Historie',
-      beschrijving: `Live metingen uit Lokaal ${sensorData.lokaal}`,
+      beschrijving: `Voorbeeldmetingen uit Lokaal ${sensorData.lokaal}`,
       detail: (
-        <div className="grid grid-cols-3 divide-x divide-slate-200 rounded-lg border border-slate-200 bg-slate-50">
-          <div className="p-3">
-            <p className="font-bold">{sensorData.temperatuur}</p>
-            <p className="text-xs text-slate-500">Temperatuur</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
+            <p className="w-11 shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-200">Buiten</p>
+            <div className="min-w-0 flex-1 border-l border-slate-200 pl-2 dark:border-slate-600">
+              {weather ? <WeatherValues weather={weather} /> : <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{weatherError || 'Weergegevens laden…'}</p>}
+            </div>
           </div>
-          <div className="p-3">
-            <p className="font-bold">{sensorData.luchtvochtigheid}</p>
-            <p className="text-xs text-slate-500">RV</p>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
+            <p className="w-11 shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-200">Binnen</p>
+            <div className="min-w-0 flex-1 border-l border-slate-200 pl-2 dark:border-slate-600">
+              <WeatherValues weather={{ temperature: sensorData.temperatuur, humidity: sensorData.luchtvochtigheid, pressure: sensorData.luchtdruk, windSpeed: 0, time: '' }} />
+            </div>
           </div>
-          <div className="p-3">
-            <p className="font-bold">{sensorData.luchtdruk}</p>
-            <p className="text-xs text-slate-500">hPa</p>
-          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="hover:underline">Open-Meteo</a> · Den Haag{weather && ' · ' + weatherTime(weather.time)}
+          </p>
         </div>
       ),
       icon: ChartNoAxesCombined,
