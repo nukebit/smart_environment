@@ -9,6 +9,7 @@ public class Lokaal
     [MaxLength(100)]
     public string Naam { get; set; } = string.Empty;
 
-    [MaxLength(100)]
-    public string Gebouw { get; set; } = string.Empty;
+    public int GebouwId { get; set; }
+
+    public Gebouw Gebouw { get; set; } = null!;
 }

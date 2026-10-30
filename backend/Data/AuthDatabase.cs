@@ -18,13 +18,14 @@ public static class AuthDatabase
         // without deleting existing data.
         await database.Database.MigrateAsync();
 
-        // Startgegevens toevoegen als er nog geen lokalen zijn.
-        if (!await database.Lokalen.AnyAsync())
+        // Alleen bij een lege omgeving een voorbeeldgebouw met lokalen toevoegen.
+        if (!await database.Gebouwen.AnyAsync() && !await database.Lokalen.AnyAsync())
         {
+            var gebouw = new Gebouw { Naam = "Voorbeeldgebouw" };
             database.Lokalen.AddRange(
-                new Lokaal { Naam = "1.02", Gebouw = "Voorbeeldgebouw" },
-                new Lokaal { Naam = "2.14", Gebouw = "Voorbeeldgebouw" },
-                new Lokaal { Naam = "3.05", Gebouw = "Voorbeeldgebouw" });
+                new Lokaal { Naam = "1.02", Gebouw = gebouw },
+                new Lokaal { Naam = "2.14", Gebouw = gebouw },
+                new Lokaal { Naam = "3.05", Gebouw = gebouw });
             await database.SaveChangesAsync();
         }
 
