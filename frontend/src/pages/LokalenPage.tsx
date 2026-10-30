@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Check, DoorOpen, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Building2, Check, DoorOpen, Pencil, Plus, Trash2, X } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
 import { useDarkMode } from '../hooks/useDarkMode';
 
 type CurrentUser = { role: string };
-type Lokaal = { id: number; naam: string; gebouw: string };
+type Gebouw = { id: number; naam: string };
+type Lokaal = { id: number; naam: string; gebouwId: number; gebouw: string };
 
-const leegFormulier = { naam: '', gebouw: '' };
+const leegFormulier = { naam: '', gebouwId: '' };
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-slate-600 dark:bg-slate-900';
 const primaryClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryClass = 'rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700';
@@ -17,7 +18,7 @@ async function readError(response: Response) {
     return 'Je sessie is verlopen. Log opnieuw in.';
   }
   if (response.status === 403) return 'Alleen beheerders kunnen lokalen beheren.';
-  if (response.status === 404) return 'Dit lokaal bestaat niet meer. Vernieuw het overzicht.';
+  if (response.status === 404) return 'De gegevens bestaan niet meer. Vernieuw het overzicht.';
   const data = await response.json().catch(() => null);
   if (data?.errors) return Object.values(data.errors as Record<string, string[]>).flat().join(' ');
   return data?.message ?? 'De actie is mislukt. Probeer het opnieuw.';
@@ -38,6 +39,7 @@ async function sendWithCsrf(url: string, method: string, body?: unknown) {
 export default function LokalenPage() {
   const [me, setMe] = useState<CurrentUser | null>(null);
   const [lokalen, setLokalen] = useState<Lokaal[]>([]);
+  const [gebouwen, setGebouwen] = useState<Gebouw[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,9 @@ export default function LokalenPage() {
   const [editing, setEditing] = useState<Lokaal | null>(null);
   const [form, setForm] = useState(leegFormulier);
   const [formError, setFormError] = useState('');
+  const [gebouwFormOpen, setGebouwFormOpen] = useState(false);
+  const [gebouwNaam, setGebouwNaam] = useState('');
+  const [gebouwError, setGebouwError] = useState('');
   const [teVerwijderen, setTeVerwijderen] = useState<Lokaal | null>(null);
   const [darkMode, toggleDarkMode] = useDarkMode();
 
@@ -76,9 +81,14 @@ export default function LokalenPage() {
     setLoading(true);
     setLoaded(false);
     try {
-      const response = await fetch('/api/lokalen', { credentials: 'include', cache: 'no-store' });
-      if (!response.ok) throw new Error(await readError(response));
-      setLokalen(await response.json());
+      const [lokalenResponse, gebouwenResponse] = await Promise.all([
+        fetch('/api/lokalen', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/gebouwen', { credentials: 'include', cache: 'no-store' }),
+      ]);
+      if (!lokalenResponse.ok) throw new Error(await readError(lokalenResponse));
+      if (!gebouwenResponse.ok) throw new Error(await readError(gebouwenResponse));
+      setLokalen(await lokalenResponse.json());
+      setGebouwen(await gebouwenResponse.json());
       setLoaded(true);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'Lokalen laden mislukt. Controleer of de backend draait.');
@@ -89,11 +99,47 @@ export default function LokalenPage() {
 
   function openForm(lokaal: Lokaal | null) {
     setEditing(lokaal);
-    setForm(lokaal ? { naam: lokaal.naam, gebouw: lokaal.gebouw } : leegFormulier);
+    setForm(lokaal ? { naam: lokaal.naam, gebouwId: String(lokaal.gebouwId) }
+      : { ...leegFormulier, gebouwId: gebouwen.length === 1 ? String(gebouwen[0].id) : '' });
     setFormError('');
     setSuccess('');
     setTeVerwijderen(null);
+    setGebouwFormOpen(false);
     setFormOpen(true);
+  }
+
+  function openGebouwForm() {
+    setGebouwNaam('');
+    setGebouwError('');
+    setSuccess('');
+    setFormOpen(false);
+    setTeVerwijderen(null);
+    setGebouwFormOpen(true);
+  }
+
+  async function saveGebouw(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setGebouwError('');
+    const naam = gebouwNaam.trim();
+    if (!naam || naam.length > 100) {
+      setGebouwError('Vul een gebouwnaam van maximaal 100 tekens in.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await sendWithCsrf('/api/gebouwen', 'POST', { naam });
+      if (!response.ok) throw new Error(await readError(response));
+      const gebouw: Gebouw = await response.json();
+      setGebouwen(current => [...current, gebouw]);
+      setPageError('');
+      setGebouwFormOpen(false);
+      setSuccess(`Gebouw ${gebouw.naam} is toegevoegd. Je kunt dit nu bij een lokaal selecteren.`);
+    } catch (error) {
+      setGebouwError(error instanceof Error ? error.message : 'Gebouw opslaan mislukt. Probeer het opnieuw.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveLokaal(event: FormEvent<HTMLFormElement>) {
@@ -101,18 +147,18 @@ export default function LokalenPage() {
     if (busy) return;
     setFormError('');
     const naam = form.naam.trim();
-    const gebouw = form.gebouw.trim();
-    if (!naam || !gebouw) {
-      setFormError('Vul een lokaalnaam en een gebouw in.');
+    const gebouwId = Number(form.gebouwId);
+    if (!naam || !gebouwen.some(gebouw => gebouw.id === gebouwId)) {
+      setFormError('Vul een lokaalnaam in en selecteer een gebouw.');
       return;
     }
-    if (naam.length > 100 || gebouw.length > 100) {
-      setFormError('De lokaalnaam en het gebouw mogen maximaal 100 tekens bevatten.');
+    if (naam.length > 100) {
+      setFormError('De lokaalnaam mag maximaal 100 tekens bevatten.');
       return;
     }
     setBusy(true);
     try {
-      const response = await sendWithCsrf(editing ? `/api/lokalen/${editing.id}` : '/api/lokalen', editing ? 'PUT' : 'POST', { naam, gebouw });
+      const response = await sendWithCsrf(editing ? `/api/lokalen/${editing.id}` : '/api/lokalen', editing ? 'PUT' : 'POST', { naam, gebouwId });
       if (!response.ok) throw new Error(await readError(response));
       const lokaal: Lokaal = await response.json();
       setLokalen(current => editing
@@ -147,6 +193,7 @@ export default function LokalenPage() {
 
   const gesorteerdeLokalen = [...lokalen].sort((a, b) =>
     a.gebouw.localeCompare(b.gebouw, 'nl') || a.naam.localeCompare(b.naam, 'nl', { numeric: true }));
+  const gesorteerdeGebouwen = [...gebouwen].sort((a, b) => a.naam.localeCompare(b.naam, 'nl', { numeric: true }));
 
   if (!me) {
     return (
@@ -169,9 +216,14 @@ export default function LokalenPage() {
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Bekijk en beheer de lokalen.</p>
           </div>
           {me.role === 'Beheerder' && (
-            <button disabled={!loaded || loading || busy} className={primaryClass} onClick={() => openForm(null)}>
-              <Plus size={18} aria-hidden="true" /> Lokaal toevoegen
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button disabled={!loaded || loading || busy} className={`${secondaryClass} inline-flex items-center gap-2`} onClick={openGebouwForm}>
+                <Building2 size={18} aria-hidden="true" /> Gebouw toevoegen
+              </button>
+              <button disabled={!loaded || loading || busy || gebouwen.length === 0} className={primaryClass} onClick={() => openForm(null)}>
+                <Plus size={18} aria-hidden="true" /> Lokaal toevoegen
+              </button>
+            </div>
           )}
         </div>
 
@@ -190,6 +242,26 @@ export default function LokalenPage() {
               <Check size={18} className="shrink-0" aria-hidden="true" />{success}
             </p>}
 
+            {loaded && gebouwen.length === 0 && <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">Voeg eerst een gebouw toe. Daarna kun je er lokalen aan koppelen.</p>}
+
+            {gebouwFormOpen && (
+              <section aria-labelledby="gebouw-heading" className="mb-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <h2 id="gebouw-heading" className="text-lg font-semibold">Gebouw toevoegen</h2>
+                  <button type="button" disabled={busy} onClick={() => setGebouwFormOpen(false)} aria-label="Gebouwformulier sluiten" className="rounded p-1 hover:bg-slate-100 dark:hover:bg-slate-700"><X size={19} /></button>
+                </div>
+                <form onSubmit={saveGebouw}>
+                  <label htmlFor="gebouw-naam" className="mb-1.5 block text-sm font-medium">Gebouwnaam</label>
+                  <input autoFocus id="gebouw-naam" required maxLength={100} disabled={busy} value={gebouwNaam} onChange={event => setGebouwNaam(event.target.value)} className={inputClass} placeholder="Bijvoorbeeld Onderwijsgebouw" />
+                  {gebouwError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{gebouwError}</p>}
+                  <div className="mt-5 flex flex-wrap justify-end gap-3">
+                    <button type="button" disabled={busy} onClick={() => setGebouwFormOpen(false)} className={secondaryClass}>Annuleren</button>
+                    <button type="submit" disabled={busy} className={primaryClass}>{busy ? 'Opslaan…' : 'Gebouw opslaan'}</button>
+                  </div>
+                </form>
+              </section>
+            )}
+
             {formOpen && (
               <section aria-labelledby="lokaal-heading" className="mb-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
                 <div className="mb-5 flex items-center justify-between gap-3">
@@ -204,7 +276,10 @@ export default function LokalenPage() {
                     </div>
                     <div>
                       <label htmlFor="lokaal-gebouw" className="mb-1.5 block text-sm font-medium">Gebouw</label>
-                      <input id="lokaal-gebouw" required maxLength={100} value={form.gebouw} onChange={event => setForm({ ...form, gebouw: event.target.value })} className={inputClass} placeholder="Bijvoorbeeld Onderwijsgebouw" />
+                      <select id="lokaal-gebouw" required value={form.gebouwId} onChange={event => setForm({ ...form, gebouwId: event.target.value })} className={inputClass}>
+                        <option value="" disabled>Selecteer een gebouw</option>
+                        {gesorteerdeGebouwen.map(gebouw => <option key={gebouw.id} value={gebouw.id}>{gebouw.naam}</option>)}
+                      </select>
                     </div>
                   </fieldset>
                   {formError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{formError}</p>}
@@ -230,7 +305,7 @@ export default function LokalenPage() {
             <section aria-label="Lokalenoverzicht" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
               <div className="border-b border-slate-200 p-5 dark:border-slate-700">
                 <h2 className="font-semibold">Alle lokalen</h2>
-                {loaded && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{lokalen.length} {lokalen.length === 1 ? 'lokaal' : 'lokalen'}</p>}
+                {loaded && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{gebouwen.length} {gebouwen.length === 1 ? 'gebouw' : 'gebouwen'} · {lokalen.length} {lokalen.length === 1 ? 'lokaal' : 'lokalen'}</p>}
               </div>
               {loading ? <p role="status" className="p-10 text-center text-sm text-slate-500 dark:text-slate-400">Lokalen laden…</p>
                 : !loaded ? <p className="p-10 text-center text-sm text-slate-500 dark:text-slate-400">Het overzicht is niet beschikbaar.</p>
@@ -253,7 +328,7 @@ export default function LokalenPage() {
                             <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{lokaal.gebouw}</td>
                             <td className="px-5 py-4"><div className="flex justify-end gap-2">
                               <button disabled={busy} onClick={() => openForm(lokaal)} aria-label={`Wijzig lokaal ${lokaal.naam}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"><Pencil size={17} aria-hidden="true" /></button>
-                              <button disabled={busy} onClick={() => { setTeVerwijderen(lokaal); setFormOpen(false); setSuccess(''); }} aria-label={`Verwijder lokaal ${lokaal.naam}`} className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"><Trash2 size={17} aria-hidden="true" /></button>
+                              <button disabled={busy} onClick={() => { setTeVerwijderen(lokaal); setFormOpen(false); setGebouwFormOpen(false); setSuccess(''); }} aria-label={`Verwijder lokaal ${lokaal.naam}`} className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"><Trash2 size={17} aria-hidden="true" /></button>
                             </div></td>
                           </tr>
                         ))}
