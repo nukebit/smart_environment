@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Building2, Check, DoorOpen, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Building2, Check, ChevronDown, DoorOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
+import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
 
 type CurrentUser = { role: string };
@@ -245,11 +246,7 @@ export default function LokalenPage() {
             {loaded && gebouwen.length === 0 && <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">Voeg eerst een gebouw toe. Daarna kun je er lokalen aan koppelen.</p>}
 
             {gebouwFormOpen && (
-              <section aria-labelledby="gebouw-heading" className="mb-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                  <h2 id="gebouw-heading" className="text-lg font-semibold">Gebouw toevoegen</h2>
-                  <button type="button" disabled={busy} onClick={() => setGebouwFormOpen(false)} aria-label="Gebouwformulier sluiten" className="rounded p-1 hover:bg-slate-100 dark:hover:bg-slate-700"><X size={19} /></button>
-                </div>
+              <FormDialog title="Gebouw toevoegen" titleId="gebouw-heading" busy={busy} onClose={() => setGebouwFormOpen(false)}>
                 <form onSubmit={saveGebouw}>
                   <label htmlFor="gebouw-naam" className="mb-1.5 block text-sm font-medium">Gebouwnaam</label>
                   <input autoFocus id="gebouw-naam" required maxLength={100} disabled={busy} value={gebouwNaam} onChange={event => setGebouwNaam(event.target.value)} className={inputClass} placeholder="Bijvoorbeeld Onderwijsgebouw" />
@@ -259,15 +256,11 @@ export default function LokalenPage() {
                     <button type="submit" disabled={busy} className={primaryClass}>{busy ? 'Opslaan…' : 'Gebouw opslaan'}</button>
                   </div>
                 </form>
-              </section>
+              </FormDialog>
             )}
 
             {formOpen && (
-              <section aria-labelledby="lokaal-heading" className="mb-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                  <h2 id="lokaal-heading" className="text-lg font-semibold">{editing ? 'Lokaal wijzigen' : 'Lokaal toevoegen'}</h2>
-                  <button type="button" disabled={busy} onClick={() => setFormOpen(false)} aria-label="Formulier sluiten" className="rounded p-1 hover:bg-slate-100 dark:hover:bg-slate-700"><X size={19} /></button>
-                </div>
+              <FormDialog title={editing ? 'Lokaal wijzigen' : 'Lokaal toevoegen'} titleId="lokaal-heading" busy={busy} onClose={() => setFormOpen(false)}>
                 <form onSubmit={saveLokaal}>
                   <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
                     <div>
@@ -276,10 +269,13 @@ export default function LokalenPage() {
                     </div>
                     <div>
                       <label htmlFor="lokaal-gebouw" className="mb-1.5 block text-sm font-medium">Gebouw</label>
-                      <select id="lokaal-gebouw" required value={form.gebouwId} onChange={event => setForm({ ...form, gebouwId: event.target.value })} className={inputClass}>
-                        <option value="" disabled>Selecteer een gebouw</option>
-                        {gesorteerdeGebouwen.map(gebouw => <option key={gebouw.id} value={gebouw.id}>{gebouw.naam}</option>)}
-                      </select>
+                      <div className="relative">
+                        <select id="lokaal-gebouw" required value={form.gebouwId} onChange={event => setForm({ ...form, gebouwId: event.target.value })} className={`${inputClass} cursor-pointer appearance-none pr-10`}>
+                          <option value="" disabled>Selecteer een gebouw</option>
+                          {gesorteerdeGebouwen.map(gebouw => <option key={gebouw.id} value={gebouw.id}>{gebouw.naam}</option>)}
+                        </select>
+                        <ChevronDown size={18} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+                      </div>
                     </div>
                   </fieldset>
                   {formError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{formError}</p>}
@@ -288,7 +284,7 @@ export default function LokalenPage() {
                     <button type="submit" disabled={busy} className={primaryClass}>{busy ? 'Opslaan…' : 'Lokaal opslaan'}</button>
                   </div>
                 </form>
-              </section>
+              </FormDialog>
             )}
 
             {teVerwijderen && (
