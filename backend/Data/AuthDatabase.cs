@@ -8,7 +8,7 @@ public static class AuthDatabase
     // Updates the database to the latest migration, adds example classrooms, creates the roles,
     // and, if configured, the first Beheerder account when no users exist.
     // Invalid account settings stop startup with an error.
-    public static async Task InitializeAsync(IServiceProvider services, IConfiguration configuration)
+    public static async Task InitializeAsync(IServiceProvider services, IConfiguration configuration, IHostEnvironment environment)
     {
         // Create a scope so database services are disposed when initialization finishes.
         await using var scope = services.CreateAsyncScope();
@@ -18,15 +18,10 @@ public static class AuthDatabase
         // without deleting existing data.
         await database.Database.MigrateAsync();
 
-        // Alleen bij een lege omgeving een voorbeeldgebouw met lokalen toevoegen.
-        if (!await database.Gebouwen.AnyAsync() && !await database.Lokalen.AnyAsync())
+        // Voorbeeldgegevens zijn alleen voor lokale ontwikkeling.
+        if (environment.IsDevelopment())
         {
-            var gebouw = new Gebouw { Naam = "Voorbeeldgebouw" };
-            database.Lokalen.AddRange(
-                new Lokaal { Naam = "1.02", Gebouw = gebouw },
-                new Lokaal { Naam = "2.14", Gebouw = gebouw },
-                new Lokaal { Naam = "3.05", Gebouw = gebouw });
-            await database.SaveChangesAsync();
+            await DevelopmentData.InitializeAsync(database);
         }
 
         // 1. Make sure the roles Beheerder and Docent exist.

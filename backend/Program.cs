@@ -20,7 +20,7 @@ AuthSetup.Configure(builder);
 var app = builder.Build();
 
 // 4. Create the database, roles and first account if needed.
-await AuthDatabase.InitializeAsync(app.Services, app.Configuration);
+await AuthDatabase.InitializeAsync(app.Services, app.Configuration, app.Environment);
 
 // 5. Set up how incoming requests are handled.
 app.UseExceptionHandler();
