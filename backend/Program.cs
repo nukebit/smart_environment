@@ -4,6 +4,7 @@ using SmartEnvironment.Api.Data;
 using SmartEnvironment.Api.Users;
 using SmartEnvironment.Api.Weather;
 using SmartEnvironment.Api.Lokalen;
+using SmartEnvironment.Api.Gebouwen;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +28,7 @@ AuthSetup.Configure(builder);
 var app = builder.Build();
 
 // 4. Create the database, roles and first account if needed.
-await AuthDatabase.InitializeAsync(app.Services, app.Configuration);
+await AuthDatabase.InitializeAsync(app.Services, app.Configuration, app.Environment);
 
 // 5. Set up how incoming requests are handled.
 app.UseExceptionHandler();
@@ -49,6 +50,7 @@ app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
 app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
 app.MapWeatherEndpoints();
 app.MapLokaalEndpoints();       // /api/lokalen/... (alleen Beheerder)
+app.MapGebouwEndpoints();       // /api/gebouwen/... (alleen Beheerder)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 

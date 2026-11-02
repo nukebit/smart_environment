@@ -23,15 +23,16 @@ public static class LokaalEndpoints
 
     private static async Task<IResult> GetAll(AuthDbContext database, CancellationToken cancellationToken)
     {
-        var lokalen = await database.Lokalen.AsNoTracking()
-            .OrderBy(lokaal => lokaal.Gebouw).ThenBy(lokaal => lokaal.Naam)
+        var lokalen = await ToResponse(database.Lokalen.AsNoTracking()
+            .OrderBy(lokaal => lokaal.Gebouw.Naam).ThenBy(lokaal => lokaal.Naam))
             .ToListAsync(cancellationToken);
         return Results.Ok(lokalen);
     }
 
     private static async Task<IResult> GetById(int id, AuthDbContext database, CancellationToken cancellationToken)
     {
-        var lokaal = await database.Lokalen.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var lokaal = await ToResponse(database.Lokalen.AsNoTracking().Where(item => item.Id == id))
+            .FirstOrDefaultAsync(cancellationToken);
         return lokaal is null ? Results.NotFound() : Results.Ok(lokaal);
     }
 
@@ -40,11 +41,14 @@ public static class LokaalEndpoints
         var invalid = ApiFilters.Validate(request);
         if (invalid is not null) return invalid;
 
-        var lokaal = new Lokaal { Naam = request.Naam.Trim(), Gebouw = request.Gebouw.Trim() };
+        var gebouw = await database.Gebouwen.FindAsync([request.GebouwId], cancellationToken);
+        if (gebouw is null) return ApiFilters.FieldError("gebouwId", "Selecteer een bestaand gebouw.");
+
+        var lokaal = new Lokaal { Naam = request.Naam.Trim(), Gebouw = gebouw };
         database.Lokalen.Add(lokaal);
 
         var error = await SaveChanges(database, cancellationToken);
-        return error ?? Results.Created($"/api/lokalen/{lokaal.Id}", lokaal);
+        return error ?? Results.Created($"/api/lokalen/{lokaal.Id}", new LokaalResponse(lokaal.Id, lokaal.Naam, gebouw.Id, gebouw.Naam));
     }
 
     private static async Task<IResult> Update(int id, LokaalRequest request, AuthDbContext database, CancellationToken cancellationToken)
@@ -55,11 +59,14 @@ public static class LokaalEndpoints
         var lokaal = await database.Lokalen.FindAsync([id], cancellationToken);
         if (lokaal is null) return Results.NotFound();
 
+        var gebouw = await database.Gebouwen.FindAsync([request.GebouwId], cancellationToken);
+        if (gebouw is null) return ApiFilters.FieldError("gebouwId", "Selecteer een bestaand gebouw.");
+
         lokaal.Naam = request.Naam.Trim();
-        lokaal.Gebouw = request.Gebouw.Trim();
+        lokaal.Gebouw = gebouw;
 
         var error = await SaveChanges(database, cancellationToken);
-        return error ?? Results.Ok(lokaal);
+        return error ?? Results.Ok(new LokaalResponse(lokaal.Id, lokaal.Naam, gebouw.Id, gebouw.Naam));
     }
 
     private static async Task<IResult> Delete(int id, AuthDbContext database, CancellationToken cancellationToken)
@@ -70,6 +77,12 @@ public static class LokaalEndpoints
         database.Lokalen.Remove(lokaal);
         await database.SaveChangesAsync(cancellationToken);
         return Results.NoContent();
+    }
+
+    private static IQueryable<LokaalResponse> ToResponse(IQueryable<Lokaal> lokalen)
+    {
+        return lokalen.Select(lokaal =>
+            new LokaalResponse(lokaal.Id, lokaal.Naam, lokaal.GebouwId, lokaal.Gebouw.Naam));
     }
 
     private static async Task<IResult?> SaveChanges(AuthDbContext database, CancellationToken cancellationToken)

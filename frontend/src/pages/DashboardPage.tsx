@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [darkMode, toggleDarkMode] = useDarkMode(); // Wordt onthouden tussen pagina's.
   const [activePage, setActivePage] = useState('Dashboard');
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
+  const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
 
   // Controleer of de gebruiker is ingelogd.
@@ -61,14 +62,19 @@ export default function DashboardPage() {
     if (role !== 'Beheerder') return;
     const controller = new AbortController();
 
-    fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal })
-      .then(async response => {
-        if (response.status === 401) {
+    Promise.all([
+      fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
+      fetch('/api/gebouwen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
+    ])
+      .then(async ([lokalenResponse, gebouwenResponse]) => {
+        if (lokalenResponse.status === 401 || gebouwenResponse.status === 401) {
           window.location.replace('/login');
           return;
         }
-        if (!response.ok) throw new Error();
-        setLokalen(await response.json());
+        if (!lokalenResponse.ok || !gebouwenResponse.ok) throw new Error();
+        const gebouwen = await gebouwenResponse.json();
+        setAantalGebouwen(gebouwen.length);
+        setLokalen(await lokalenResponse.json());
       })
       .catch(() => {
         if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Open het overzicht om opnieuw te proberen.');
@@ -99,7 +105,6 @@ export default function DashboardPage() {
   }
 
   const isBeheerder = role === 'Beheerder';
-  const aantalGebouwen = new Set(lokalen?.map(lokaal => lokaal.gebouw.trim().toLocaleLowerCase('nl')) ?? []).size;
 
   const kaarten = [
     {

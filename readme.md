@@ -106,7 +106,8 @@ Installeer in VS Code de extensie **SQLite Viewer** (Florian Klampfer) en klik o
 | `AspNetUsers` | Accounts: e-mail, wachtwoord-**hash**, `FullName`, `LastLoginAt` (UTC) |
 | `AspNetRoles` | De rollen `Beheerder` en `Docent` |
 | `AspNetUserRoles` | Welke gebruiker welke rol heeft |
-| `Lokalen` | Lokalen: naam en gebouw |
+| `Gebouwen` | Gebouwen: unieke naam |
+| `Lokalen` | Lokalen: naam en verwijzing naar een gebouw (`GebouwId`) |
 | `__EFMigrationsHistory` | Welke migrations zijn uitgevoerd |
 
 Wijzig niets in de tabellen terwijl de backend draait. Accounts beheer je via de Beheer-pagina.
@@ -190,12 +191,22 @@ Alle routes vereisen de rol **Beheerder**. POST, PUT en DELETE vereisen ook een 
 |---|---|---|
 | GET | `/api/lokalen` | Lokalen uit SQLite laden |
 | GET | `/api/lokalen/{id}` | Eén lokaal bekijken |
-| POST | `/api/lokalen` | Lokaal toevoegen (`naam`, `gebouw`) |
+| POST | `/api/lokalen` | Lokaal toevoegen (`naam`, `gebouwId`) |
 | PUT | `/api/lokalen/{id}` | Lokaalgegevens wijzigen |
 | DELETE | `/api/lokalen/{id}` | Lokaal verwijderen |
 
 Een lokaalnaam is uniek binnen een gebouw (hoofdletters maken geen verschil).
 Dubbele invoer geeft **409**; ongeldige invoer geeft **400**.
+De antwoorden bevatten `id`, `naam`, `gebouwId` en de gebouwnaam in `gebouw`.
+
+### Gebouwen – `backend/Gebouwen/GebouwEndpoints.cs`
+
+| Method | Route | Toegang | Doel |
+|---|---|---|---|
+| GET | `/api/gebouwen` | Beheerder | Gebouwen voor de keuzelijst ophalen |
+| POST | `/api/gebouwen` | Beheerder + CSRF | Gebouw toevoegen (`naam`) |
+
+Een gebouwnaam is verplicht, maximaal 100 tekens en uniek (hoofdletters maken geen verschil).
 
 Statuscodes: **401** = niet ingelogd · **403** = geen rechten · **400** = ongeldige invoer of CSRF-token.
 
