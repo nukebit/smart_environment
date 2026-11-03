@@ -3,10 +3,9 @@ import { Building2, Check, ChevronDown, ChevronLeft, ChevronRight, DoorOpen, Pen
 import AppHeader from '../components/AppHeader';
 import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
+import type { Gebouw, Lokaal } from '../types/lokalen';
 
 type CurrentUser = { role: string };
-type Gebouw = { id: number; naam: string };
-type Lokaal = { id: number; naam: string; gebouwId: number; gebouw: string };
 
 const sorteerOpties = {
   'gebouw-oplopend': 'Gebouwnaam (oplopend)',
@@ -50,6 +49,7 @@ export default function LokalenPage() {
   const [me, setMe] = useState<CurrentUser | null>(null);
   const [lokalen, setLokalen] = useState<Lokaal[]>([]);
   const [gebouwen, setGebouwen] = useState<Gebouw[]>([]);
+  const [actiefLokaalId, setActiefLokaalId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,12 +62,17 @@ export default function LokalenPage() {
   const [gebouwFormOpen, setGebouwFormOpen] = useState(false);
   const [gebouwNaam, setGebouwNaam] = useState('');
   const [gebouwError, setGebouwError] = useState('');
+  const [editingGebouw, setEditingGebouw] = useState<Gebouw | null>(null);
+  const [gebouwenOpen, setGebouwenOpen] = useState(false);
+  const [gebouwTeVerwijderen, setGebouwTeVerwijderen] = useState<Gebouw | null>(null);
   const [teVerwijderen, setTeVerwijderen] = useState<Lokaal | null>(null);
   const [zoekterm, setZoekterm] = useState('');
   const [sortering, setSortering] = useState<Sortering>('gebouw-oplopend');
   const [perPagina, setPerPagina] = useState(10);
   const [pagina, setPagina] = useState(1);
   const [darkMode, toggleDarkMode] = useDarkMode();
+  const isBeheerder = me?.role === 'Beheerder';
+  const actiefLokaal = lokalen.find(lokaal => lokaal.id === actiefLokaalId);
 
   useEffect(() => {
     start();
@@ -84,7 +89,7 @@ export default function LokalenPage() {
       if (!response.ok) throw new Error();
       const user: CurrentUser = await response.json();
       setMe(user);
-      if (user.role === 'Beheerder') await laadLokalen();
+      await laadLokalen();
     } catch {
       setPageError('Sessie controleren mislukt. Probeer het opnieuw.');
     }
@@ -95,14 +100,18 @@ export default function LokalenPage() {
     setLoading(true);
     setLoaded(false);
     try {
-      const [lokalenResponse, gebouwenResponse] = await Promise.all([
+      const [lokalenResponse, gebouwenResponse, actiefResponse] = await Promise.all([
         fetch('/api/lokalen', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/gebouwen', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/lokalen/actief', { credentials: 'include', cache: 'no-store' }),
       ]);
       if (!lokalenResponse.ok) throw new Error(await readError(lokalenResponse));
       if (!gebouwenResponse.ok) throw new Error(await readError(gebouwenResponse));
+      if (!actiefResponse.ok) throw new Error(await readError(actiefResponse));
       setLokalen(await lokalenResponse.json());
       setGebouwen(await gebouwenResponse.json());
+      const actief = await actiefResponse.json();
+      setActiefLokaalId(actief.lokaal?.id ?? null);
       setLoaded(true);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'Lokalen laden mislukt. Controleer of de backend draait.');
@@ -112,6 +121,7 @@ export default function LokalenPage() {
   }
 
   function openForm(lokaal: Lokaal | null) {
+    if (!isBeheerder) return;
     setEditing(lokaal);
     setForm(lokaal ? { naam: lokaal.naam, gebouwId: String(lokaal.gebouwId) }
       : { ...leegFormulier, gebouwId: gebouwen.length === 1 ? String(gebouwen[0].id) : '' });
@@ -122,8 +132,10 @@ export default function LokalenPage() {
     setFormOpen(true);
   }
 
-  function openGebouwForm() {
-    setGebouwNaam('');
+  function openGebouwForm(gebouw: Gebouw | null = null) {
+    if (!isBeheerder) return;
+    setEditingGebouw(gebouw);
+    setGebouwNaam(gebouw?.naam ?? '');
     setGebouwError('');
     setSuccess('');
     setFormOpen(false);
@@ -133,7 +145,7 @@ export default function LokalenPage() {
 
   async function saveGebouw(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !isBeheerder) return;
     setGebouwError('');
     const naam = gebouwNaam.trim();
     if (!naam || naam.length > 100) {
@@ -142,13 +154,14 @@ export default function LokalenPage() {
     }
     setBusy(true);
     try {
-      const response = await sendWithCsrf('/api/gebouwen', 'POST', { naam });
+      const response = await sendWithCsrf(editingGebouw ? `/api/gebouwen/${editingGebouw.id}` : '/api/gebouwen', editingGebouw ? 'PUT' : 'POST', { naam });
       if (!response.ok) throw new Error(await readError(response));
       const gebouw: Gebouw = await response.json();
-      setGebouwen(current => [...current, gebouw]);
+      setGebouwen(current => editingGebouw ? current.map(item => item.id === gebouw.id ? gebouw : item) : [...current, gebouw]);
+      setLokalen(current => current.map(lokaal => lokaal.gebouwId === gebouw.id ? { ...lokaal, gebouw: gebouw.naam } : lokaal));
       setPageError('');
       setGebouwFormOpen(false);
-      setSuccess(`Gebouw ${gebouw.naam} is toegevoegd. Je kunt dit nu bij een lokaal selecteren.`);
+      setSuccess(`Gebouw ${gebouw.naam} is ${editingGebouw ? 'gewijzigd' : 'toegevoegd'}.`);
     } catch (error) {
       setGebouwError(error instanceof Error ? error.message : 'Gebouw opslaan mislukt. Probeer het opnieuw.');
     } finally {
@@ -158,7 +171,7 @@ export default function LokalenPage() {
 
   async function saveLokaal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !isBeheerder) return;
     setFormError('');
     const naam = form.naam.trim();
     const gebouwId = Number(form.gebouwId);
@@ -189,17 +202,53 @@ export default function LokalenPage() {
   }
 
   async function deleteLokaal() {
-    if (!teVerwijderen || busy) return;
+    if (!teVerwijderen || busy || !isBeheerder) return;
     setBusy(true);
     try {
       const response = await sendWithCsrf(`/api/lokalen/${teVerwijderen.id}`, 'DELETE');
       if (!response.ok) throw new Error(await readError(response));
       setLokalen(current => current.filter(lokaal => lokaal.id !== teVerwijderen.id));
+      if (actiefLokaalId === teVerwijderen.id) setActiefLokaalId(null);
       setPageError('');
       setSuccess(`Lokaal ${teVerwijderen.naam} is verwijderd.`);
       setTeVerwijderen(null);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'Verwijderen mislukt. Probeer het opnieuw.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function activeerLokaal(lokaal: Lokaal) {
+    if (busy || actiefLokaalId === lokaal.id) return;
+    setBusy(true);
+    setPageError('');
+    setSuccess('');
+    try {
+      const response = await sendWithCsrf('/api/lokalen/actief', 'PUT', { lokaalId: lokaal.id });
+      if (!response.ok) throw new Error(await readError(response));
+      const actief = await response.json();
+      setActiefLokaalId(actief.lokaal.id);
+      setSuccess(`Lokaal ${lokaal.naam} in ${lokaal.gebouw} is nu jouw actieve lokaal.`);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Actief lokaal opslaan mislukt.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteGebouw() {
+    if (!gebouwTeVerwijderen || busy || !isBeheerder) return;
+    setBusy(true);
+    try {
+      const response = await sendWithCsrf(`/api/gebouwen/${gebouwTeVerwijderen.id}`, 'DELETE');
+      if (!response.ok) throw new Error(await readError(response));
+      setGebouwen(current => current.filter(gebouw => gebouw.id !== gebouwTeVerwijderen.id));
+      setPageError('');
+      setSuccess(`Gebouw ${gebouwTeVerwijderen.naam} is verwijderd.`);
+      setGebouwTeVerwijderen(null);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Gebouw verwijderen mislukt.');
     } finally {
       setBusy(false);
     }
@@ -255,11 +304,12 @@ export default function LokalenPage() {
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Smart Environment</p>
             <h1 className="text-3xl font-semibold">Lokalen</h1>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Bekijk en beheer de lokalen.</p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{isBeheerder ? 'Beheer gebouwen en lokalen en kies jouw actieve lokaal.' : 'Bekijk alle lokalen en kies jouw actieve lokaal.'}</p>
           </div>
-          {me.role === 'Beheerder' && (
+          {isBeheerder && (
             <div className="flex flex-wrap gap-3">
-              <button disabled={!loaded || loading || busy} className={`${secondaryClass} inline-flex items-center gap-2`} onClick={openGebouwForm}>
+              <button disabled={!loaded || loading || busy} className={secondaryClass} aria-expanded={gebouwenOpen} onClick={() => setGebouwenOpen(!gebouwenOpen)}>Gebouwen beheren</button>
+              <button disabled={!loaded || loading || busy} className={`${secondaryClass} inline-flex items-center gap-2`} onClick={() => openGebouwForm()}>
                 <Building2 size={18} aria-hidden="true" /> Gebouw toevoegen
               </button>
               <button disabled={!loaded || loading || busy || gebouwen.length === 0} className={primaryClass} onClick={() => openForm(null)}>
@@ -269,12 +319,6 @@ export default function LokalenPage() {
           )}
         </div>
 
-        {me.role !== 'Beheerder' ? (
-          <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-            Alleen beheerders kunnen lokalen beheren.
-            <a href="/dashboard" className="mt-3 block font-semibold underline">Terug naar dashboard</a>
-          </div>
-        ) : (
           <>
             {pageError && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
               {pageError}
@@ -284,10 +328,39 @@ export default function LokalenPage() {
               <Check size={18} className="shrink-0" aria-hidden="true" />{success}
             </p>}
 
-            {loaded && gebouwen.length === 0 && <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">Voeg eerst een gebouw toe. Daarna kun je er lokalen aan koppelen.</p>}
+            {loaded && (
+              <section aria-label="Jouw actieve lokaal" className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
+                <div>
+                  <h2 className="font-semibold">Jouw actieve lokaal</h2>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{actiefLokaal ? `${actiefLokaal.naam} · ${actiefLokaal.gebouw}` : 'Kies een lokaal uit het overzicht. Je keuze wordt voor jouw account bewaard.'}</p>
+                </div>
+                {actiefLokaal && <a href="/sensordata" className={primaryClass}>Bekijk sensordata</a>}
+              </section>
+            )}
 
-            {gebouwFormOpen && (
-              <FormDialog title="Gebouw toevoegen" titleId="gebouw-heading" busy={busy} onClose={() => setGebouwFormOpen(false)}>
+            {isBeheerder && gebouwenOpen && (
+              <section aria-label="Gebouwen beheren" className="mb-6 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+                <h2 className="mb-4 font-semibold">Gebouwen beheren</h2>
+                {gesorteerdeGebouwen.length === 0 && <p className="text-sm text-slate-500">Er zijn nog geen gebouwen.</p>}
+                <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {gesorteerdeGebouwen.map(gebouw => {
+                    const aantal = lokalen.filter(lokaal => lokaal.gebouwId === gebouw.id).length;
+                    return <li key={gebouw.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                      <div><p className="font-medium">{gebouw.naam}</p><p className="text-xs text-slate-500 dark:text-slate-400">{aantal} {aantal === 1 ? 'lokaal' : 'lokalen'}{aantal > 0 && ' · Verplaats of verwijder eerst de lokalen om dit gebouw te verwijderen.'}</p></div>
+                      <div className="flex gap-2">
+                        <button disabled={busy} onClick={() => openGebouwForm(gebouw)} aria-label={`Wijzig gebouw ${gebouw.naam}`} className={secondaryClass}><Pencil size={17} aria-hidden="true" /></button>
+                        <button disabled={busy || aantal > 0} onClick={() => { setGebouwTeVerwijderen(gebouw); setSuccess(''); setPageError(''); }} aria-label={`Verwijder gebouw ${gebouw.naam}`} className={`${secondaryClass} text-red-700 dark:text-red-400`}><Trash2 size={17} aria-hidden="true" /></button>
+                      </div>
+                    </li>;
+                  })}
+                </ul>
+              </section>
+            )}
+
+            {isBeheerder && loaded && gebouwen.length === 0 && <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">Voeg eerst een gebouw toe. Daarna kun je er lokalen aan koppelen.</p>}
+
+            {isBeheerder && gebouwFormOpen && (
+              <FormDialog title={editingGebouw ? 'Gebouw wijzigen' : 'Gebouw toevoegen'} titleId="gebouw-heading" busy={busy} onClose={() => setGebouwFormOpen(false)}>
                 <form onSubmit={saveGebouw}>
                   <label htmlFor="gebouw-naam" className="mb-1.5 block text-sm font-medium">Gebouwnaam</label>
                   <input autoFocus id="gebouw-naam" required maxLength={100} disabled={busy} value={gebouwNaam} onChange={event => setGebouwNaam(event.target.value)} className={inputClass} placeholder="Bijvoorbeeld Onderwijsgebouw" />
@@ -300,7 +373,7 @@ export default function LokalenPage() {
               </FormDialog>
             )}
 
-            {formOpen && (
+            {isBeheerder && formOpen && (
               <FormDialog title={editing ? 'Lokaal wijzigen' : 'Lokaal toevoegen'} titleId="lokaal-heading" busy={busy} onClose={() => setFormOpen(false)}>
                 <form onSubmit={saveLokaal}>
                   <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
@@ -328,7 +401,18 @@ export default function LokalenPage() {
               </FormDialog>
             )}
 
-            {teVerwijderen && (
+            {isBeheerder && gebouwTeVerwijderen && (
+              <FormDialog title="Gebouw verwijderen?" titleId="gebouw-verwijderen-heading" busy={busy} onClose={() => setGebouwTeVerwijderen(null)}>
+                <p className="text-sm text-slate-600 dark:text-slate-300">Weet je zeker dat je het lege gebouw {gebouwTeVerwijderen.naam} wilt verwijderen?</p>
+                {pageError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{pageError}</p>}
+                <div className="mt-5 flex flex-wrap justify-end gap-3">
+                  <button disabled={busy} onClick={() => setGebouwTeVerwijderen(null)} className={secondaryClass}>Annuleren</button>
+                  <button disabled={busy} onClick={deleteGebouw} className="rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800">Gebouw verwijderen</button>
+                </div>
+              </FormDialog>
+            )}
+
+            {isBeheerder && teVerwijderen && (
               <section aria-label="Verwijderen bevestigen" className="mb-6 rounded-xl border border-red-200 bg-white p-5 dark:border-red-900 dark:bg-slate-800">
                 <h2 className="font-semibold">Lokaal verwijderen?</h2>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Weet je zeker dat je lokaal {teVerwijderen.naam} in {teVerwijderen.gebouw} wilt verwijderen?</p>
@@ -395,7 +479,7 @@ export default function LokalenPage() {
                   <div className="px-5 py-14 text-center">
                     <DoorOpen size={36} className="mx-auto mb-4 text-slate-400" aria-hidden="true" />
                     <h3 className="font-semibold">Nog geen lokalen</h3>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Voeg je eerste lokaal toe om te beginnen.</p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{isBeheerder ? 'Voeg je eerste lokaal toe om te beginnen.' : 'Er zijn nog geen lokalen toegevoegd door een beheerder.'}</p>
                   </div>
                 ) : gefilterdeLokalen.length === 0 ? (
                   <div className="px-5 py-14 text-center">
@@ -408,16 +492,19 @@ export default function LokalenPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
-                        <tr><th scope="col" className="px-5 py-3 font-medium">Lokaal</th><th scope="col" className="px-5 py-3 font-medium">Gebouw</th><th scope="col" className="px-5 py-3 text-right font-medium">Acties</th></tr>
+                        <tr><th scope="col" className="px-5 py-3 font-medium">Lokaal</th><th scope="col" className="px-5 py-3 font-medium">Gebouw</th><th scope="col" className="px-5 py-3 text-right font-medium">{isBeheerder ? 'Acties' : 'Jouw selectie'}</th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                         {zichtbareLokalen.map(lokaal => (
-                          <tr key={lokaal.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                          <tr key={lokaal.id} className={actiefLokaalId === lokaal.id ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'}>
                             <th scope="row" className="px-5 py-4 font-semibold">{lokaal.naam}</th>
                             <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{lokaal.gebouw}</td>
                             <td className="px-5 py-4"><div className="flex justify-end gap-2">
+                              <button disabled={busy || actiefLokaalId === lokaal.id} aria-pressed={actiefLokaalId === lokaal.id} aria-label={actiefLokaalId === lokaal.id ? `${lokaal.naam} in ${lokaal.gebouw} is jouw actieve lokaal` : `Maak ${lokaal.naam} in ${lokaal.gebouw} actief`} onClick={() => activeerLokaal(lokaal)} className={`${secondaryClass} whitespace-nowrap text-emerald-800 dark:text-emerald-300`}>{actiefLokaalId === lokaal.id ? 'Actief' : 'Actief maken'}</button>
+                              {isBeheerder && <>
                               <button disabled={busy} onClick={() => openForm(lokaal)} aria-label={`Wijzig lokaal ${lokaal.naam}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"><Pencil size={17} aria-hidden="true" /></button>
                               <button disabled={busy} onClick={() => { setTeVerwijderen(lokaal); setFormOpen(false); setGebouwFormOpen(false); setSuccess(''); }} aria-label={`Verwijder lokaal ${lokaal.naam}`} className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"><Trash2 size={17} aria-hidden="true" /></button>
+                              </>}
                             </div></td>
                           </tr>
                         ))}
@@ -444,7 +531,6 @@ export default function LokalenPage() {
               )}
             </section>
           </>
-        )}
       </main>
     </div>
   );

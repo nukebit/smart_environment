@@ -7,7 +7,7 @@ import { Leaf, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
 const navigatie = ['Dashboard', 'Sensordata', 'Lokalen', 'Waarschuwingen', 'Beheer'];
 
 // Pagina's die alleen een Beheerder mag zien.
-const alleenBeheerder = ['Beheer', 'Lokalen'];
+const alleenBeheerder = ['Beheer'];
 
 type Props = {
   activePage: string;                   // Welk tabblad groen is, bijvoorbeeld 'Beheer'.
@@ -22,7 +22,7 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  // Beheer en lokaalbeheer zijn alleen zichtbaar voor beheerders.
+  // Alle gebruikers zien lokalen; alleen beheerders zien accountbeheer.
   const zichtbareNavigatie = navigatie.filter(
     page => role === 'Beheerder' || !alleenBeheerder.includes(page)
   );
