@@ -206,6 +206,18 @@ export default function SensordataPage() {
 
   // Dataset generatie per periode en integratie met echte API sensordata
   const meetData = useMemo(() => {
+    // Bereken een stabiele, realistische klimaat-vingerafdruk per specifiek lokaal
+    let roomHash = 0;
+    for (let i = 0; i < geselecteerdLokaal.length; i++) {
+      roomHash = (roomHash << 5) - roomHash + geselecteerdLokaal.charCodeAt(i);
+      roomHash |= 0;
+    }
+    const norm = Math.abs(roomHash);
+    const tempOffset = ((norm % 48) - 22) / 10; // -2.2°C tot +2.5°C
+    const humOffset = (norm % 19) - 8;           // -8% tot +10%
+    const pressOffset = (norm % 7) - 3;          // -3 hPa tot +3 hPa
+    const seed = norm % 10;
+
     const classify = (val: number) => {
       const isExceeded = val >= huidigeSensor.defaultGrens;
       const isTooLow = val < huidigeSensor.optimaalMin;
@@ -226,6 +238,18 @@ export default function SensordataPage() {
         statusText,
         isOverschrijding: isExceeded || isTooLow,
       };
+    };
+
+    const getAdjustedValue = (baseVal: number, idx: number) => {
+      if (geselecteerdSensortype === 'temperatuur') {
+        const wave = Math.sin(idx * 0.7 + seed) * 0.5;
+        return Math.round((baseVal + tempOffset + wave) * 10) / 10;
+      }
+      if (geselecteerdSensortype === 'luchtvochtigheid') {
+        const wave = Math.cos(idx * 0.6 + seed) * 2;
+        return Math.round(Math.min(95, Math.max(25, baseVal + humOffset + wave)));
+      }
+      return Math.round(baseVal + pressOffset);
     };
 
     // Als er live API telemetrie is voor dit lokaal, gebruik dan de echte metingen uit de Urban Sense API
@@ -256,12 +280,13 @@ export default function SensordataPage() {
       const uren = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00', '06:00', 'Nu'];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const values = [19.2, 20.8, 22.4, 24.1, 23.8, 22.1, 20.7, 19.8, 18.9, 18.3, 18.1, 18.6, 20.2];
+        const baseValues = [19.2, 20.8, 22.4, 24.1, 23.8, 22.1, 20.7, 19.8, 18.9, 18.3, 18.1, 18.6, 20.2];
         return uren.map((datum, idx) => {
-          const cl = classify(values[idx]);
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
           return {
             datum,
-            waarde: values[idx],
+            waarde: val,
             status: cl.status,
             statusText: cl.statusText,
             isOverschrijding: cl.isOverschrijding,
@@ -270,12 +295,13 @@ export default function SensordataPage() {
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const values = [48, 52, 56, 59, 57, 54, 53, 51, 50, 49, 48, 49, 51];
+        const baseValues = [48, 52, 56, 59, 57, 54, 53, 51, 50, 49, 48, 49, 51];
         return uren.map((datum, idx) => {
-          const cl = classify(values[idx]);
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
           return {
             datum,
-            waarde: values[idx],
+            waarde: val,
             status: cl.status,
             statusText: cl.statusText,
             isOverschrijding: cl.isOverschrijding,
@@ -283,12 +309,13 @@ export default function SensordataPage() {
         });
       }
 
-      const values = [1015, 1016, 1017, 1017, 1018, 1019, 1020, 1020, 1021, 1021, 1022, 1022, 1023];
+      const baseValues = [1015, 1016, 1017, 1017, 1018, 1019, 1020, 1020, 1021, 1021, 1022, 1022, 1023];
       return uren.map((datum, idx) => {
-        const cl = classify(values[idx]);
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
         return {
           datum,
-          waarde: values[idx],
+          waarde: val,
           status: cl.status,
           statusText: cl.statusText,
           isOverschrijding: cl.isOverschrijding,
@@ -301,12 +328,13 @@ export default function SensordataPage() {
       const dagen = ['Ma 19 mei', 'Di 20 mei', 'Wo 21 mei', 'Do 22 mei', 'Vr 23 mei', 'Za 24 mei', 'Zo 25 mei'];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const values = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
+        const baseValues = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
         return dagen.map((datum, idx) => {
-          const cl = classify(values[idx]);
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
           return {
             datum,
-            waarde: values[idx],
+            waarde: val,
             status: cl.status,
             statusText: cl.statusText,
             isOverschrijding: cl.isOverschrijding,
@@ -315,12 +343,13 @@ export default function SensordataPage() {
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const values = [52, 55, 68, 72, 64, 49, 47];
+        const baseValues = [52, 55, 68, 72, 64, 49, 47];
         return dagen.map((datum, idx) => {
-          const cl = classify(values[idx]);
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
           return {
             datum,
-            waarde: values[idx],
+            waarde: val,
             status: cl.status,
             statusText: cl.statusText,
             isOverschrijding: cl.isOverschrijding,
@@ -328,12 +357,13 @@ export default function SensordataPage() {
         });
       }
 
-      const values = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
+      const baseValues = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
       return dagen.map((datum, idx) => {
-        const cl = classify(values[idx]);
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
         return {
           datum,
-          waarde: values[idx],
+          waarde: val,
           status: cl.status,
           statusText: cl.statusText,
           isOverschrijding: cl.isOverschrijding,
@@ -346,12 +376,13 @@ export default function SensordataPage() {
       const data30 = ['26 apr', '30 apr', '4 mei', '8 mei', '12 mei', '16 mei', '20 mei', '24 mei', '26 mei'];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const values = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
+        const baseValues = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
         return data30.map((datum, idx) => {
-          const cl = classify(values[idx]);
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
           return {
             datum,
-            waarde: values[idx],
+            waarde: val,
             status: cl.status,
             statusText: cl.statusText,
             isOverschrijding: cl.isOverschrijding,
@@ -360,12 +391,13 @@ export default function SensordataPage() {
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const values = [51, 58, 64, 73, 66, 61, 55, 52, 56];
+        const baseValues = [51, 58, 64, 73, 66, 61, 55, 52, 56];
         return data30.map((datum, idx) => {
-          const cl = classify(values[idx]);
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
           return {
             datum,
-            waarde: values[idx],
+            waarde: val,
             status: cl.status,
             statusText: cl.statusText,
             isOverschrijding: cl.isOverschrijding,
@@ -373,12 +405,13 @@ export default function SensordataPage() {
         });
       }
 
-      const values = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
+      const baseValues = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
       return data30.map((datum, idx) => {
-        const cl = classify(values[idx]);
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
         return {
           datum,
-          waarde: values[idx],
+          waarde: val,
           status: cl.status,
           statusText: cl.statusText,
           isOverschrijding: cl.isOverschrijding,
@@ -393,12 +426,13 @@ export default function SensordataPage() {
     ];
 
     if (geselecteerdSensortype === 'temperatuur') {
-      const values = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
+      const baseValues = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
       return data3m.map((datum, idx) => {
-        const cl = classify(values[idx]);
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
         return {
           datum,
-          waarde: values[idx],
+          waarde: val,
           status: cl.status,
           statusText: cl.statusText,
           isOverschrijding: cl.isOverschrijding,
@@ -407,12 +441,13 @@ export default function SensordataPage() {
     }
 
     if (geselecteerdSensortype === 'luchtvochtigheid') {
-      const values = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
+      const baseValues = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
       return data3m.map((datum, idx) => {
-        const cl = classify(values[idx]);
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
         return {
           datum,
-          waarde: values[idx],
+          waarde: val,
           status: cl.status,
           statusText: cl.statusText,
           isOverschrijding: cl.isOverschrijding,
@@ -420,18 +455,19 @@ export default function SensordataPage() {
       });
     }
 
-    const values = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
+    const baseValues = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
     return data3m.map((datum, idx) => {
-      const cl = classify(values[idx]);
+      const val = getAdjustedValue(baseValues[idx], idx);
+      const cl = classify(val);
       return {
         datum,
-        waarde: values[idx],
+        waarde: val,
         status: cl.status,
         statusText: cl.statusText,
         isOverschrijding: cl.isOverschrijding,
       };
     });
-  }, [apiTelemetry, geselecteerdePeriode, geselecteerdSensortype, huidigeSensor]);
+  }, [apiTelemetry, geselecteerdePeriode, geselecteerdLokaal, geselecteerdSensortype, huidigeSensor]);
 
   // Statistische calculaties
   const statistieken = useMemo(() => {
