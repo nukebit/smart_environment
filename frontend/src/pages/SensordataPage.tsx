@@ -40,18 +40,6 @@ const sensorTypen = [
     beschrijving: 'Aanbevolen binnentemperatuur voor een optimaal leercomfort in lokalen.',
   },
   {
-    id: 'co2',
-    label: 'CO₂ ppm',
-    naam: 'CO₂',
-    eenheid: 'ppm',
-    defaultGrens: 1000,
-    optimaalMin: 400,
-    optimaalMax: 800,
-    standaardWeergave: 'staaf' as const,
-    kleur: '#2563eb',
-    beschrijving: 'Ventilatienorm conform de Frisse Scholen richtlijn (Klasse B).',
-  },
-  {
     id: 'luchtvochtigheid',
     label: 'Luchtvochtigheid %',
     naam: 'Luchtvochtigheid',
@@ -181,16 +169,6 @@ export default function SensordataPage() {
         }));
       }
 
-      if (geselecteerdSensortype === 'co2') {
-        const values = [520, 850, 1080, 1150, 920, 610, 500, 480, 440, 430, 420, 430, 510];
-        return uren.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Onvoldoende ventilatie' : 'Goed geventileerd',
-        }));
-      }
-
       if (geselecteerdSensortype === 'luchtvochtigheid') {
         const values = [48, 52, 56, 59, 57, 54, 53, 51, 50, 49, 48, 49, 51];
         return uren.map((datum, idx) => ({
@@ -221,16 +199,6 @@ export default function SensordataPage() {
           waarde: values[idx],
           isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
           statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Grensoverschrijding' : 'Normaal',
-        }));
-      }
-
-      if (geselecteerdSensortype === 'co2') {
-        const values = [880, 1050, 1120, 940, 890, 460, 440];
-        return dagen.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Te hoog CO₂' : 'Frisse lucht',
         }));
       }
 
@@ -267,16 +235,6 @@ export default function SensordataPage() {
         }));
       }
 
-      if (geselecteerdSensortype === 'co2') {
-        const values = [810, 950, 1140, 880, 1080, 910, 860, 520, 840];
-        return data30.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= 1000 ? 'Ventilatieadvies' : 'Voldoende',
-        }));
-      }
-
       if (geselecteerdSensortype === 'luchtvochtigheid') {
         const values = [51, 58, 64, 73, 66, 61, 55, 52, 56];
         return data30.map((datum, idx) => ({
@@ -309,16 +267,6 @@ export default function SensordataPage() {
         waarde: values[idx],
         isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
         statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Grensoverschrijding' : 'Normaal',
-      }));
-    }
-
-    if (geselecteerdSensortype === 'co2') {
-      const values = [580, 640, 720, 810, 750, 920, 880, 1050, 940, 1180, 990, 1120, 890, 1040];
-      return data3m.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: values[idx] >= 1000 ? 'Grensoverschrijding' : 'Goed geventileerd',
       }));
     }
 
@@ -386,9 +334,6 @@ export default function SensordataPage() {
   const { yMin, yMax, ySteps } = useMemo(() => {
     if (geselecteerdSensortype === 'temperatuur') {
       return { yMin: 16, yMax: 26, ySteps: [16, 18, 20, 22, 24, 26] };
-    }
-    if (geselecteerdSensortype === 'co2') {
-      return { yMin: 400, yMax: 1300, ySteps: [400, 600, 800, 1000, 1200] };
     }
     if (geselecteerdSensortype === 'luchtvochtigheid') {
       return { yMin: 30, yMax: 80, ySteps: [30, 40, 50, 60, 70, 80] };

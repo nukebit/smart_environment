@@ -5,6 +5,7 @@ using SmartEnvironment.Api.Users;
 using SmartEnvironment.Api.Weather;
 using SmartEnvironment.Api.Lokalen;
 using SmartEnvironment.Api.Gebouwen;
+using SmartEnvironment.Api.Sensors;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,7 @@ builder.Services.AddHttpClient("OpenMeteo", client =>
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddSingleton<WeatherService>();
+builder.Services.AddHttpClient<UrbanSenseService>();
 
 // 2. Connect to the database specified in appsettings.json.
 string? connectionString = builder.Configuration.GetConnectionString("Auth");
@@ -51,6 +53,7 @@ app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, B
 app.MapWeatherEndpoints();
 app.MapLokaalEndpoints();       // /api/lokalen/... (alleen Beheerder)
 app.MapGebouwEndpoints();       // /api/gebouwen/... (alleen Beheerder)
+app.MapSensorEndpoints();       // /api/sensors/... (Sensordata endpoints)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
