@@ -159,13 +159,16 @@ export default function DashboardPage() {
       titel: 'Waarschuwingen',
       beschrijving: 'Meldingen die aandacht vereisen',
       detail: (
-        <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3">
-          <p className="font-semibold">2 actieve meldingen</p>
-          <p className="mt-1 text-xs text-slate-500">
+        <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
+          <p className="font-semibold">
+            2 actieve meldingen
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             1 grenswaarde · 1 sensor offline
           </p>
         </div>
       ),
+
       icon: Bell,
       kleur: 'amber',
       pagina: 'Waarschuwingen',
@@ -174,13 +177,16 @@ export default function DashboardPage() {
       titel: 'Beheer',
       beschrijving: 'Beheer de Smart Environment omgeving',
       detail: (
-        <div className="rounded-lg border-l-2 border-green-600 bg-slate-50 p-3">
-          <p className="font-semibold">Accounts beheren</p>
-          <p className="mt-1 text-xs text-slate-500">
+        <div className="rounded-lg border-l-2 border-green-600 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
+          <p className="font-semibold">
+            Accounts beheren
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Docenten- en beheerdersaccounts
           </p>
         </div>
       ),
+
       icon: Settings,
       kleur: 'green',
       pagina: 'Beheer',
@@ -246,9 +252,6 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <span className="rounded-full bg-amber-100 px-4 py-2 text-xs font-semibold text-amber-700">
-              ⚠ 1 lokaal vereist aandacht
-            </span>
           </div>
         </section>
 
@@ -275,7 +278,7 @@ export default function DashboardPage() {
               return (
                 <article
                   key={kaart.titel}
-                  className={`rounded-xl border p-6 shadow-sm transition hover:shadow-md ${
+                  className={`flex flex-col rounded-xl border p-6 shadow-sm transition hover:shadow-md ${
                     darkMode
                       ? 'border-slate-700 bg-slate-800'
                       : 'border-slate-200 bg-white'
@@ -286,7 +289,14 @@ export default function DashboardPage() {
                       <Icon size={22} />
                     </div>
 
-                    <ArrowUpRight size={19} className="text-slate-400" />
+                    <button
+                      type="button"
+                      onClick={() => handleNavigation(kaart.pagina)}
+                      aria-label={`Ga naar ${kaart.titel}`}
+                      className="flex cursor-pointer rounded-md p-2 text-slate-400 transition hover:bg-slate-700/20 hover:text-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                      >
+                      <ArrowUpRight size={19} />
+                    </button>
                   </div>
 
                   <h3 className="mb-2 text-lg font-semibold">
@@ -303,7 +313,7 @@ export default function DashboardPage() {
 
                   <button
                     onClick={() => handleNavigation(kaart.pagina)}
-                    className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
+                    className="mt-auto flex cursor-pointer items-center gap-2 self-start text-sm font-semibold text-emerald-700 hover:underline"
                   >
                     {kaart.pagina === 'Lokalen' ? 'Lokalen beheren' : 'Bekijk'} <ArrowRight size={16} />
                   </button>
