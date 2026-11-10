@@ -231,14 +231,14 @@ export default function SensordataPage() {
       const status: 'te-hoog' | 'te-laag' | 'optimaal' = isExceeded
         ? 'te-hoog'
         : isTooLow
-        ? 'te-laag'
-        : 'optimaal';
+          ? 'te-laag'
+          : 'optimaal';
 
       const statusText = isExceeded
         ? 'Boven alarmgrens'
         : isTooLow
-        ? `Onder de ondergrens (${huidigeSensor.id === 'temperatuur' ? 'te koel' : huidigeSensor.id === 'luchtvochtigheid' ? 'te droog' : 'lage druk'})`
-        : 'Binnen optimaal bereik';
+          ? `Onder de ondergrens (${huidigeSensor.id === 'temperatuur' ? 'te koel' : huidigeSensor.id === 'luchtvochtigheid' ? 'te droog' : 'lage druk'})`
+          : 'Binnen optimaal bereik';
 
       return {
         status,
@@ -259,43 +259,42 @@ export default function SensordataPage() {
       return Math.round(baseVal + pressOffset);
     };
 
-    // Als er live API telemetrie is voor dit lokaal, gebruik dan de echte metingen uit de Urban Sense API
-    if (apiTelemetry && apiTelemetry.length > 0) {
-      const chronologisch = [...apiTelemetry].reverse();
-      // Downsample tot maximaal 18 punten zodat de grafiek rustig en overzichtelijk blijft
-      const targetCount = Math.min(18, chronologisch.length);
-      const sampled: typeof chronologisch = [];
-      if (chronologisch.length <= targetCount) {
-        sampled.push(...chronologisch);
-      } else {
-        const step = (chronologisch.length - 1) / (targetCount - 1);
-        for (let i = 0; i < targetCount; i++) {
-          sampled.push(chronologisch[Math.round(i * step)]);
+    // 1. AFGELOPEN 24 UUR (Gebruik actuele Urban Sense API telemetrie indien beschikbaar)
+    if (geselecteerdePeriode === '24u') {
+      if (apiTelemetry && apiTelemetry.length > 0) {
+        const chronologisch = [...apiTelemetry].reverse();
+        // Downsample tot maximaal 18 punten zodat de grafiek rustig en overzichtelijk blijft
+        const targetCount = Math.min(18, chronologisch.length);
+        const sampled: typeof chronologisch = [];
+        if (chronologisch.length <= targetCount) {
+          sampled.push(...chronologisch);
+        } else {
+          const step = (chronologisch.length - 1) / (targetCount - 1);
+          for (let i = 0; i < targetCount; i++) {
+            sampled.push(chronologisch[Math.round(i * step)]);
+          }
         }
+
+        return sampled.map(m => {
+          const d = new Date(m.timestamp);
+          const datum = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+          let rawVal = 0;
+          if (geselecteerdSensortype === 'temperatuur') rawVal = m.temperature ?? 0;
+          else if (geselecteerdSensortype === 'luchtvochtigheid') rawVal = m.humidity ?? 0;
+          else rawVal = m.pressure ?? 0;
+
+          const val = Math.round(rawVal * 10) / 10;
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
-      return sampled.map(m => {
-        const d = new Date(m.timestamp);
-        const datum = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-        let rawVal = 0;
-        if (geselecteerdSensortype === 'temperatuur') rawVal = m.temperature ?? 0;
-        else if (geselecteerdSensortype === 'luchtvochtigheid') rawVal = m.humidity ?? 0;
-        else rawVal = m.pressure ?? 0;
-
-        const val = Math.round(rawVal * 10) / 10;
-        const cl = classify(val);
-        return {
-          datum,
-          waarde: val,
-          status: cl.status,
-          statusText: cl.statusText,
-          isOverschrijding: cl.isOverschrijding,
-        };
-      });
-    }
-
-    // 1. AFGELOPEN 24 UUR (Tijdstippen in uren)
-    if (geselecteerdePeriode === '24u') {
       const uren = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00', '06:00', 'Nu'];
 
       if (geselecteerdSensortype === 'temperatuur') {
@@ -342,12 +341,41 @@ export default function SensordataPage() {
       });
     }
 
-    // 2. AFGELOPEN 7 DAGEN (Dagen van de week)
-    if (geselecteerdePeriode === '7d') {
-      const dagen = ['Ma 19 mei', 'Di 20 mei', 'Wo 21 mei', 'Do 22 mei', 'Vr 23 mei', 'Za 24 mei', 'Zo 25 mei'];
+      // 2. AFGELOPEN 7 DAGEN (Dagen van de week)
+      if (geselecteerdePeriode === '7d') {
+        const dagen = ['Ma 19 mei', 'Di 20 mei', 'Wo 21 mei', 'Do 22 mei', 'Vr 23 mei', 'Za 24 mei', 'Zo 25 mei'];
 
-      if (geselecteerdSensortype === 'temperatuur') {
-        const baseValues = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
+        if (geselecteerdSensortype === 'temperatuur') {
+          const baseValues = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
+          return dagen.map((datum, idx) => {
+            const val = getAdjustedValue(baseValues[idx], idx);
+            const cl = classify(val);
+            return {
+              datum,
+              waarde: val,
+              status: cl.status,
+              statusText: cl.statusText,
+              isOverschrijding: cl.isOverschrijding,
+            };
+          });
+        }
+
+        if (geselecteerdSensortype === 'luchtvochtigheid') {
+          const baseValues = [52, 55, 68, 72, 64, 49, 47];
+          return dagen.map((datum, idx) => {
+            const val = getAdjustedValue(baseValues[idx], idx);
+            const cl = classify(val);
+            return {
+              datum,
+              waarde: val,
+              status: cl.status,
+              statusText: cl.statusText,
+              isOverschrijding: cl.isOverschrijding,
+            };
+          });
+        }
+
+        const baseValues = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
         return dagen.map((datum, idx) => {
           const val = getAdjustedValue(baseValues[idx], idx);
           const cl = classify(val);
@@ -361,9 +389,42 @@ export default function SensordataPage() {
         });
       }
 
-      if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const baseValues = [52, 55, 68, 72, 64, 49, 47];
-        return dagen.map((datum, idx) => {
+      // 3. AFGELOPEN 30 DAGEN (Data per 3-4 dagen)
+      if (geselecteerdePeriode === '30d') {
+        const data30 = ['26 apr', '30 apr', '4 mei', '8 mei', '12 mei', '16 mei', '20 mei', '24 mei', '26 mei'];
+
+        if (geselecteerdSensortype === 'temperatuur') {
+          const baseValues = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
+          return data30.map((datum, idx) => {
+            const val = getAdjustedValue(baseValues[idx], idx);
+            const cl = classify(val);
+            return {
+              datum,
+              waarde: val,
+              status: cl.status,
+              statusText: cl.statusText,
+              isOverschrijding: cl.isOverschrijding,
+            };
+          });
+        }
+
+        if (geselecteerdSensortype === 'luchtvochtigheid') {
+          const baseValues = [51, 58, 64, 73, 66, 61, 55, 52, 56];
+          return data30.map((datum, idx) => {
+            const val = getAdjustedValue(baseValues[idx], idx);
+            const cl = classify(val);
+            return {
+              datum,
+              waarde: val,
+              status: cl.status,
+              statusText: cl.statusText,
+              isOverschrijding: cl.isOverschrijding,
+            };
+          });
+        }
+
+        const baseValues = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
+        return data30.map((datum, idx) => {
           const val = getAdjustedValue(baseValues[idx], idx);
           const cl = classify(val);
           return {
@@ -376,27 +437,15 @@ export default function SensordataPage() {
         });
       }
 
-      const baseValues = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
-      return dagen.map((datum, idx) => {
-        const val = getAdjustedValue(baseValues[idx], idx);
-        const cl = classify(val);
-        return {
-          datum,
-          waarde: val,
-          status: cl.status,
-          statusText: cl.statusText,
-          isOverschrijding: cl.isOverschrijding,
-        };
-      });
-    }
-
-    // 3. AFGELOPEN 30 DAGEN (Data per 3-4 dagen)
-    if (geselecteerdePeriode === '30d') {
-      const data30 = ['26 apr', '30 apr', '4 mei', '8 mei', '12 mei', '16 mei', '20 mei', '24 mei', '26 mei'];
+      // 4. AFGELOPEN 3 MAANDEN
+      const data3m = [
+        '15 feb', '22 feb', '1 mrt', '8 mrt', '15 mrt', '22 mrt', '29 mrt',
+        '5 apr', '12 apr', '18 apr', '25 apr', '1 mei', '8 mei', '14 mei',
+      ];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const baseValues = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
-        return data30.map((datum, idx) => {
+        const baseValues = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
+        return data3m.map((datum, idx) => {
           const val = getAdjustedValue(baseValues[idx], idx);
           const cl = classify(val);
           return {
@@ -410,8 +459,8 @@ export default function SensordataPage() {
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const baseValues = [51, 58, 64, 73, 66, 61, 55, 52, 56];
-        return data30.map((datum, idx) => {
+        const baseValues = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
+        return data3m.map((datum, idx) => {
           const val = getAdjustedValue(baseValues[idx], idx);
           const cl = classify(val);
           return {
@@ -424,28 +473,7 @@ export default function SensordataPage() {
         });
       }
 
-      const baseValues = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
-      return data30.map((datum, idx) => {
-        const val = getAdjustedValue(baseValues[idx], idx);
-        const cl = classify(val);
-        return {
-          datum,
-          waarde: val,
-          status: cl.status,
-          statusText: cl.statusText,
-          isOverschrijding: cl.isOverschrijding,
-        };
-      });
-    }
-
-    // 4. AFGELOPEN 3 MAANDEN
-    const data3m = [
-      '15 feb', '22 feb', '1 mrt', '8 mrt', '15 mrt', '22 mrt', '29 mrt',
-      '5 apr', '12 apr', '18 apr', '25 apr', '1 mei', '8 mei', '14 mei',
-    ];
-
-    if (geselecteerdSensortype === 'temperatuur') {
-      const baseValues = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
+      const baseValues = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
       return data3m.map((datum, idx) => {
         const val = getAdjustedValue(baseValues[idx], idx);
         const cl = classify(val);
@@ -457,36 +485,7 @@ export default function SensordataPage() {
           isOverschrijding: cl.isOverschrijding,
         };
       });
-    }
-
-    if (geselecteerdSensortype === 'luchtvochtigheid') {
-      const baseValues = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
-      return data3m.map((datum, idx) => {
-        const val = getAdjustedValue(baseValues[idx], idx);
-        const cl = classify(val);
-        return {
-          datum,
-          waarde: val,
-          status: cl.status,
-          statusText: cl.statusText,
-          isOverschrijding: cl.isOverschrijding,
-        };
-      });
-    }
-
-    const baseValues = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
-    return data3m.map((datum, idx) => {
-      const val = getAdjustedValue(baseValues[idx], idx);
-      const cl = classify(val);
-      return {
-        datum,
-        waarde: val,
-        status: cl.status,
-        statusText: cl.statusText,
-        isOverschrijding: cl.isOverschrijding,
-      };
-    });
-  }, [apiTelemetry, geselecteerdePeriode, geselecteerdLokaal, geselecteerdSensortype, huidigeSensor]);
+    }, [apiTelemetry, geselecteerdePeriode, geselecteerdLokaal, geselecteerdSensortype, huidigeSensor]);
 
   // Statistische calculaties
   const statistieken = useMemo(() => {
@@ -637,9 +636,8 @@ export default function SensordataPage() {
 
           <button
             onClick={handleExportCsv}
-            className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
-              darkMode ? 'border-slate-700 bg-slate-800 text-slate-200' : 'border-slate-200 bg-white text-slate-700 shadow-2xs'
-            }`}
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition hover:bg-slate-100 dark:hover:bg-slate-800 ${darkMode ? 'border-slate-700 bg-slate-800 text-slate-200' : 'border-slate-200 bg-white text-slate-700 shadow-2xs'
+              }`}
           >
             <Download size={15} />
             Data exporteren
@@ -662,13 +660,12 @@ export default function SensordataPage() {
 
         {/* HOOFDINDELING */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          
+
           {/* LINKER FILTERPANEEL */}
           <aside className="lg:col-span-3">
             <div
-              className={`rounded-2xl border p-5 shadow-2xs ${
-                darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
-              }`}
+              className={`rounded-2xl border p-5 shadow-2xs ${darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                }`}
             >
               <div className="mb-4 flex items-center justify-between border-b pb-3 dark:border-slate-700/60">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Filters</h2>
@@ -687,9 +684,8 @@ export default function SensordataPage() {
                     id="sensor-gebouw"
                     value={geselecteerdGebouw}
                     onChange={e => handleGebouwChange(e.target.value)}
-                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
-                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
-                    }`}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                      }`}
                   >
                     {Object.keys(gebouwenData).map(gebouw => (
                       <option key={gebouw} value={gebouw}>
@@ -708,9 +704,8 @@ export default function SensordataPage() {
                     id="sensor-lokaal"
                     value={geselecteerdLokaal}
                     onChange={e => setGeselecteerdLokaal(e.target.value)}
-                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
-                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
-                    }`}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                      }`}
                   >
                     {(gebouwenData[geselecteerdGebouw] || []).map(lokaal => (
                       <option key={lokaal} value={lokaal}>
@@ -728,9 +723,8 @@ export default function SensordataPage() {
                   <select
                     value={geselecteerdSensortype}
                     onChange={e => setGeselecteerdSensortype(e.target.value)}
-                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
-                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
-                    }`}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                      }`}
                   >
                     {sensorTypen.map(sensor => (
                       <option key={sensor.id} value={sensor.id}>
@@ -748,9 +742,8 @@ export default function SensordataPage() {
                   <select
                     value={geselecteerdePeriode}
                     onChange={e => setGeselecteerdePeriode(e.target.value)}
-                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
-                      darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
-                    }`}
+                    className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${darkMode ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-slate-50/50 text-slate-900'
+                      }`}
                   >
                     {periodes.map(p => (
                       <option key={p.id} value={p.id}>
@@ -773,11 +766,10 @@ export default function SensordataPage() {
 
               {/* OPVALLENDE NORM & GRENSWAARDE KAART */}
               <div
-                className={`mt-5 rounded-2xl border p-4 transition ${
-                  darkMode
-                    ? 'border-emerald-800/60 bg-emerald-950/25 text-slate-200'
-                    : 'border-emerald-200/90 bg-emerald-50/70 text-slate-800 shadow-2xs'
-                }`}
+                className={`mt-5 rounded-2xl border p-4 transition ${darkMode
+                  ? 'border-emerald-800/60 bg-emerald-950/25 text-slate-200'
+                  : 'border-emerald-200/90 bg-emerald-50/70 text-slate-800 shadow-2xs'
+                  }`}
               >
                 <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2.5 dark:border-emerald-800/50">
                   <div className="flex items-center gap-2">
@@ -817,12 +809,11 @@ export default function SensordataPage() {
 
           {/* RECHTER GRAFIEK & DATACARDS */}
           <section className="space-y-6 lg:col-span-9">
-            
+
             {/* GRAFIEK CONTAINER */}
             <div
-              className={`rounded-2xl border p-6 shadow-2xs transition ${
-                darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
-              }`}
+              className={`rounded-2xl border p-6 shadow-2xs transition ${darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                }`}
             >
               {/* GRAFIEK HEADER MET GEBOUW, LOKAAL EN TIJDBESTEK */}
               <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -869,21 +860,19 @@ export default function SensordataPage() {
                   <div className={`flex rounded-lg border p-0.5 ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-slate-100'}`}>
                     <button
                       onClick={() => setWeergaveModus('lijn')}
-                      className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
-                        weergaveModus === 'lijn'
-                          ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
-                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                      }`}
+                      className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition ${weergaveModus === 'lijn'
+                        ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                        }`}
                     >
                       Lijn
                     </button>
                     <button
                       onClick={() => setWeergaveModus('staaf')}
-                      className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
-                        weergaveModus === 'staaf'
-                          ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
-                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                      }`}
+                      className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition ${weergaveModus === 'staaf'
+                        ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                        }`}
                     >
                       Staven
                     </button>
@@ -1155,99 +1144,95 @@ export default function SensordataPage() {
                         </p>
                       )}
                       {hoveredPoint.status === 'te-laag' && (
-                        <p className="mt-0.5 text-[11px] font-semibold text-rose-500">
-                          ⚠ {hoveredPoint.statusText}
-                        </p>
+                          <p className="mt-0.5 text-[11px] font-semibold text-rose-500">
+                            ⚠ {hoveredPoint.statusText}
+                          </p>
                       )}
-                      {hoveredPoint.status === 'optimaal' && (
-                        <p className="mt-0.5 text-[11px] text-emerald-400">
-                          ✓ {hoveredPoint.statusText}
-                        </p>
-                      )}
-                    </div>
-                  );
+                          {hoveredPoint.status === 'optimaal' && (
+                            <p className="mt-0.5 text-[11px] text-emerald-400">
+                              ✓ {hoveredPoint.statusText}
+                            </p>
+                          )}
+                        </div>
+                      );
                 })()}
-              </div>
+                    </div>
             </div>
 
-            {/* DE 4 KALME DATACARDS */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              
-              {/* KAART 1: GEMIDDELDE */}
-              <article
-                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
-                  darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
-                }`}
-              >
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Gemiddelde
-                </span>
-                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {statistieken.avg.toString().replace('.', ',')}{huidigeSensor.eenheid}
-                </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  +0,8{huidigeSensor.eenheid} t.o.v. vorige periode
-                </p>
-              </article>
+              {/* DE 4 KALME DATACARDS */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
-              {/* KAART 2: MINIMUM */}
-              <article
-                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
-                  darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
-                }`}
-              >
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Minimale waarde
-                </span>
-                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {statistieken.min.toString().replace('.', ',')}{huidigeSensor.eenheid}
-                </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Laagste punt in geselecteerde periode
-                </p>
-              </article>
+                {/* KAART 1: GEMIDDELDE */}
+                <article
+                  className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                    }`}
+                >
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Gemiddelde
+                  </span>
+                  <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                    {statistieken.avg.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    +0,8{huidigeSensor.eenheid} t.o.v. vorige periode
+                  </p>
+                </article>
 
-              {/* KAART 3: MAXIMUM */}
-              <article
-                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
-                  darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
-                }`}
-              >
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Maximale waarde
-                </span>
-                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {statistieken.max.toString().replace('.', ',')}{huidigeSensor.eenheid}
-                </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Hoogste punt in geselecteerde periode
-                </p>
-              </article>
+                {/* KAART 2: MINIMUM */}
+                <article
+                  className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                    }`}
+                >
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Minimale waarde
+                  </span>
+                  <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                    {statistieken.min.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Laagste punt in geselecteerde periode
+                  </p>
+                </article>
 
-              {/* KAART 4: GRENSOVERSCHRIJDINGEN */}
-              <article
-                className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${
-                  statistieken.overschrijdingen > 0
+                {/* KAART 3: MAXIMUM */}
+                <article
+                  className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${darkMode ? 'border-slate-800 bg-slate-800/90' : 'border-slate-200/80 bg-white'
+                    }`}
+                >
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Maximale waarde
+                  </span>
+                  <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                    {statistieken.max.toString().replace('.', ',')}{huidigeSensor.eenheid}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Hoogste punt in geselecteerde periode
+                  </p>
+                </article>
+
+                {/* KAART 4: GRENSOVERSCHRIJDINGEN */}
+                <article
+                  className={`rounded-2xl border p-4 shadow-2xs transition hover:shadow-xs ${statistieken.overschrijdingen > 0
                     ? darkMode
                       ? 'border-amber-900/40 bg-amber-950/15'
                       : 'border-amber-200/80 bg-amber-50/40'
                     : darkMode
-                    ? 'border-slate-800 bg-slate-800/90'
-                    : 'border-slate-200/80 bg-white'
-                }`}
-              >
-                <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
-                  Grensoverschrijdingen
-                </span>
-                <p className="mt-2 text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
-                  {statistieken.overschrijdingen}
-                </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  2 minder dan vorige periode
-                </p>
-              </article>
+                      ? 'border-slate-800 bg-slate-800/90'
+                      : 'border-slate-200/80 bg-white'
+                    }`}
+                >
+                  <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                    Grensoverschrijdingen
+                  </span>
+                  <p className="mt-2 text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
+                    {statistieken.overschrijdingen}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    2 minder dan vorige periode
+                  </p>
+                </article>
 
-            </div>
+              </div>
 
           </section>
         </div>
