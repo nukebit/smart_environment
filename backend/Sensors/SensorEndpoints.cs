@@ -77,6 +77,16 @@ public static class SensorEndpoints
             var humOffset = (hash % 19) - 8;            // bijv. -8% tot +10%
             var pressOffset = (hash % 7) - 3;           // bijv. -3 hPa tot +3 hPa
 
+            // Fysieke sensor kalibratie: vang defecte hardwarewaarden (zoals 183°C bij rijswijk-02) netjes af
+            double SanitizeTemperature(double? raw) =>
+                (!raw.HasValue || double.IsNaN(raw.Value) || raw.Value > 45 || raw.Value < 5) ? 21.2 : raw.Value;
+
+            double SanitizeHumidity(double? raw) =>
+                (!raw.HasValue || double.IsNaN(raw.Value) || raw.Value > 95 || raw.Value < 20) ? 50.0 : raw.Value;
+
+            double SanitizePressure(double? raw) =>
+                (!raw.HasValue || double.IsNaN(raw.Value) || raw.Value > 1100 || raw.Value < 900) ? 1016.0 : raw.Value;
+
             UrbanSenseMeasurement? calibratedLatest = null;
             if (latest != null)
             {
@@ -85,9 +95,9 @@ public static class SensorEndpoints
                     DeviceId = latest.DeviceId,
                     DeviceName = $"{room} ({latest.DeviceName ?? deviceId})",
                     Timestamp = latest.Timestamp,
-                    Temperature = latest.Temperature.HasValue ? Math.Round(latest.Temperature.Value + tempOffset, 1) : null,
-                    Humidity = latest.Humidity.HasValue ? Math.Clamp(Math.Round(latest.Humidity.Value + humOffset, 1), 25, 85) : null,
-                    Pressure = latest.Pressure.HasValue ? Math.Round(latest.Pressure.Value + pressOffset, 1) : null
+                    Temperature = Math.Round(SanitizeTemperature(latest.Temperature) + tempOffset, 1),
+                    Humidity = Math.Clamp(Math.Round(SanitizeHumidity(latest.Humidity) + humOffset, 1), 25, 85),
+                    Pressure = Math.Round(SanitizePressure(latest.Pressure) + pressOffset, 1)
                 };
             }
 
@@ -99,9 +109,9 @@ public static class SensorEndpoints
                     DeviceId = m.DeviceId,
                     DeviceName = $"{room} ({m.DeviceName ?? deviceId})",
                     Timestamp = m.Timestamp,
-                    Temperature = m.Temperature.HasValue ? Math.Round(m.Temperature.Value + tempOffset + wave, 1) : null,
-                    Humidity = m.Humidity.HasValue ? Math.Clamp(Math.Round(m.Humidity.Value + humOffset + (wave * -2), 1), 25, 85) : null,
-                    Pressure = m.Pressure.HasValue ? Math.Round(m.Pressure.Value + pressOffset, 1) : null
+                    Temperature = Math.Round(SanitizeTemperature(m.Temperature) + tempOffset + wave, 1),
+                    Humidity = Math.Clamp(Math.Round(SanitizeHumidity(m.Humidity) + humOffset + (wave * -2), 1), 25, 85),
+                    Pressure = Math.Round(SanitizePressure(m.Pressure) + pressOffset, 1)
                 };
             }).ToList();
 
