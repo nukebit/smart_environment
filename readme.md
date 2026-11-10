@@ -79,17 +79,16 @@ Log in met het account uit stap 2 (`example@test.com` / `password`).
 
 | Rol | Ziet | Mag |
 |---|---|---|
-| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts, gebouwen en lokalen beheren; een eigen actief lokaal kiezen |
-| **Docent** | Dashboard en **Lokalen** | Alle lokalen bekijken en één eigen actief lokaal kiezen; geen accounts, gebouwen of lokalen beheren |
+| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts, gebouwen en lokalen beheren |
+| **Docent** | Dashboard en **Lokalen** | Alle lokalen bekijken |
 
 Op **Beheer** (`/beheer`) maakt een beheerder accounts aan voor docenten.
 Het wachtwoord dat de beheerder invult, geeft hij persoonlijk door aan de docent.
 
 > De backend controleert de rol bij **elk** verzoek. Een docent die zelf `/api/users` aanroept, krijgt **403**.
 
-Op **Lokalen** kiest iedere gebruiker met **Actief maken** een eigen lokaal.
-De database bewaart één keuze per account, ook na uitloggen. Het dashboard toont deze keuze en Sensordata opent met dit lokaal.
-Een docent ziet geen toevoeg-, wijzig- of verwijderknoppen; dezelfde acties worden ook door de backend geweigerd.
+Op **Sensordata** kiest iedere gebruiker een lokaal via de filters. Bij het openen is het eerste beschikbare lokaal geselecteerd.
+Een docent heeft alleen leestoegang tot het lokalenoverzicht.
 
 ---
 
@@ -144,9 +143,11 @@ Zet de nieuwe bestanden in `Migrations` mee in je commit.
 
 ## Lokalen beheren
 
-De pagina **Lokalen** (`/lokalen`) is beschikbaar voor beheerders.
-Je kunt het overzicht bekijken, een lokaal toevoegen, de gegevens wijzigen en een lokaal verwijderen.
-Een lokaal heeft een naam en een gebouw. Verwijderen vraagt om bevestiging.
+Beheerders en docenten kunnen het overzicht op **Lokalen** (`/lokalen`) bekijken.
+Een beheerder kan lokalen toevoegen, wijzigen en verwijderen. Een lokaal heeft een naam en een gebouw.
+Bij het verwijderen verschijnt een pop-up met de lokaal- en gebouwnaam. Het lokaal wordt pas na bevestiging verwijderd.
+Via **Gebouwen beheren** kunnen beheerders gebouwen zoeken, toevoegen, hernoemen en lege gebouwen verwijderen.
+**Bekijk lokalen** opent het lokalenoverzicht met een filter op dat gebouw en selecteert het gebouw bij het toevoegen van een lokaal.
 
 De lokalen staan in de tabel **`Lokalen`** in dezelfde **`backend/auth.db`** als de accounts.
 Bij het starten voert de backend de migration **`AddLokalen`** automatisch uit.
@@ -189,7 +190,7 @@ Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodi
 
 ### Lokaalbeheer – `backend/Lokalen/LokaalEndpoints.cs`
 
-Beheerders en docenten mogen lokalen bekijken en hun eigen actieve lokaal kiezen.
+Beheerders en docenten mogen lokalen bekijken. De routes onder `/api/lokalen/actief` zijn beschikbaar voor bestaande API-clients.
 Alleen beheerders mogen lokaalgegevens toevoegen, wijzigen of verwijderen.
 POST, PUT en DELETE vereisen ook een CSRF-token.
 
