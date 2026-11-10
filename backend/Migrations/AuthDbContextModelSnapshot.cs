@@ -260,6 +260,21 @@ namespace SmartEnvironment.Api.Migrations
                     b.ToTable("Lokalen");
                 });
 
+            modelBuilder.Entity("SmartEnvironment.Api.Data.LokaalKeuze", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LokaalId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("LokaalId");
+
+                    b.ToTable("LokaalKeuzes");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -320,6 +335,25 @@ namespace SmartEnvironment.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Gebouw");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Data.LokaalKeuze", b =>
+                {
+                    b.HasOne("SmartEnvironment.Api.Data.Lokaal", "Lokaal")
+                        .WithMany()
+                        .HasForeignKey("LokaalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartEnvironment.Api.Data.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Lokaal");
+
+                    b.Navigation("User");
                 });
 #pragma warning restore 612, 618
         }

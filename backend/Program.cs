@@ -51,8 +51,8 @@ app.UseRateLimiter();           // Check the limit on login attempts.
 app.MapAuthEndpoints();         // /api/auth/...  (see Auth/AuthEndpoints.cs)
 app.MapUserEndpoints();         // /api/users/... (see Users/UserEndpoints.cs, Beheerder only)
 app.MapWeatherEndpoints();
-app.MapLokaalEndpoints();       // /api/lokalen/... (alleen Beheerder)
-app.MapGebouwEndpoints();       // /api/gebouwen/... (alleen Beheerder)
+app.MapLokaalEndpoints();       // Bekijken en persoonlijk kiezen; alleen Beheerder beheert lokalen.
+app.MapGebouwEndpoints();       // Bekijken voor beide rollen; alleen Beheerder beheert gebouwen.
 app.MapSensorEndpoints();       // /api/sensors/... (Sensordata endpoints)
 app.Map("/api/{**path}", () => Results.NotFound()).DisableCookieRedirect();
 app.MapFallbackToFile("index.html").AllowAnonymous();

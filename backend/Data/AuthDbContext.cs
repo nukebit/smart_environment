@@ -14,6 +14,7 @@ public class AuthDbContext : IdentityDbContext<AppUser>
 
     public DbSet<Lokaal> Lokalen => Set<Lokaal>();
     public DbSet<Gebouw> Gebouwen => Set<Gebouw>();
+    public DbSet<LokaalKeuze> LokaalKeuzes => Set<LokaalKeuze>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -29,5 +30,12 @@ public class AuthDbContext : IdentityDbContext<AppUser>
             .HasForeignKey(item => item.GebouwId).OnDelete(DeleteBehavior.Restrict);
         // Een lokaalnaam mag maar een keer voorkomen binnen hetzelfde gebouw.
         lokaal.HasIndex(item => new { item.GebouwId, item.Naam }).IsUnique();
+
+        var keuze = builder.Entity<LokaalKeuze>();
+        keuze.HasKey(item => item.UserId);
+        keuze.HasOne(item => item.User).WithMany()
+            .HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        keuze.HasOne(item => item.Lokaal).WithMany()
+            .HasForeignKey(item => item.LokaalId).OnDelete(DeleteBehavior.Cascade);
     }
 }
