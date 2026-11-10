@@ -217,6 +217,49 @@ namespace SmartEnvironment.Api.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("SmartEnvironment.Api.Data.Gebouw", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Naam")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Naam")
+                        .IsUnique();
+
+                    b.ToTable("Gebouwen");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Data.Lokaal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("GebouwId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Naam")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GebouwId", "Naam")
+                        .IsUnique();
+
+                    b.ToTable("Lokalen");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -266,6 +309,17 @@ namespace SmartEnvironment.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Data.Lokaal", b =>
+                {
+                    b.HasOne("SmartEnvironment.Api.Data.Gebouw", "Gebouw")
+                        .WithMany()
+                        .HasForeignKey("GebouwId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Gebouw");
                 });
 #pragma warning restore 612, 618
         }
