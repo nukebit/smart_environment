@@ -7,7 +7,7 @@ import { Leaf, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
 const navigatie = ['Dashboard', 'Sensordata', 'Lokalen', 'Waarschuwingen', 'Beheer'];
 
 // Pagina's die alleen een Beheerder mag zien.
-const alleenBeheerder = ['Beheer', 'Lokalen'];
+const alleenBeheerder = ['Beheer'];
 
 type Props = {
   activePage: string;                   // Welk tabblad groen is, bijvoorbeeld 'Beheer'.
@@ -22,7 +22,8 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  // Beheer en lokaalbeheer zijn alleen zichtbaar voor beheerders.
+  // Een Docent ziet het tabblad "Beheer" niet.
+  // Let op: dit is alleen voor het gemak. De backend weigert een Docent ook zelf (403).
   const zichtbareNavigatie = navigatie.filter(
     page => role === 'Beheerder' || !alleenBeheerder.includes(page)
   );
@@ -30,37 +31,19 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   function handleNavigation(page: string) {
     setMenuOpen(false);
 
-    if (page === 'Lokalen') {
-      if (activePage !== 'Lokalen') window.location.assign('/lokalen');
-      return;
-    }
-
-    if (page === 'Waarschuwingen') {
-      if (activePage !== page) window.location.assign('/waarschuwingen');
-      return;
-    }
-
     // Beheer is een eigen pagina.
     if (page === 'Beheer') {
       if (activePage !== 'Beheer') window.location.assign('/beheer');
       return;
     }
 
-    if (page === 'Sensordata') {
-      if (activePage !== 'Sensordata') window.location.assign('/sensordata');
-      return;
-    }
-
-    if (page === 'Dashboard') {
-      if (activePage !== 'Dashboard') window.location.assign('/dashboard');
-      return;
-    }
-
+    // Op het dashboard regelt het dashboard zelf de andere tabbladen.
     if (onNavigate) {
       onNavigate(page);
       return;
     }
 
+    // Vanaf een andere pagina (zoals Beheer) terug naar het dashboard.
     window.location.assign('/dashboard');
   }
 

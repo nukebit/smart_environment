@@ -5,10 +5,10 @@ namespace SmartEnvironment.Api.Data;
 
 public static class AuthDatabase
 {
-    // Updates the database to the latest migration, adds example classrooms, creates the roles,
+    // Updates the database to the latest migration, creates the roles,
     // and, if configured, the first Beheerder account when no users exist.
     // Invalid account settings stop startup with an error.
-    public static async Task InitializeAsync(IServiceProvider services, IConfiguration configuration, IHostEnvironment environment)
+    public static async Task InitializeAsync(IServiceProvider services, IConfiguration configuration)
     {
         // Create a scope so database services are disposed when initialization finishes.
         await using var scope = services.CreateAsyncScope();
@@ -17,12 +17,6 @@ public static class AuthDatabase
         // Apply all migrations in the Migrations folder. New tables or columns are added
         // without deleting existing data.
         await database.Database.MigrateAsync();
-
-        // Voorbeeldgegevens zijn alleen voor lokale ontwikkeling.
-        if (environment.IsDevelopment())
-        {
-            await DevelopmentData.InitializeAsync(database);
-        }
 
         // 1. Make sure the roles Beheerder and Docent exist.
         var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
