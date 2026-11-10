@@ -58,12 +58,20 @@ const sensorTypen = [
   },
 ];
 
-const periodes = [
-  { id: '24u', label: 'Afgelopen 24 uur', datumTekst: 'Laatste 24 uur (uurgemiddelden)' },
-  { id: '7d', label: 'Afgelopen 7 dagen', datumTekst: '19 mei – 25 mei 2025' },
-  { id: '30d', label: 'Afgelopen 30 dagen', datumTekst: '26 april – 26 mei 2025' },
-  { id: '3m', label: 'Afgelopen 3 maanden', datumTekst: '15 februari – 14 mei 2025' },
+const DAGEN_KORT = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
+const MAANDEN_KORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const MAANDEN_LANG = [
+  'januari', 'februari', 'maart', 'april', 'mei', 'juni',
+  'juli', 'augustus', 'september', 'oktober', 'november', 'december'
 ];
+
+function formatDatumKort(d: Date): string {
+  return `${d.getDate()} ${MAANDEN_KORT[d.getMonth()]}`;
+}
+
+function formatDagDatumKort(d: Date): string {
+  return `${DAGEN_KORT[d.getDay()]} ${d.getDate()} ${MAANDEN_KORT[d.getMonth()]}`;
+}
 
 export default function SensordataPage() {
   const [role, setRole] = useState('');
@@ -185,9 +193,40 @@ export default function SensordataPage() {
     return sensorTypen.find(s => s.id === geselecteerdSensortype) || sensorTypen[0];
   }, [geselecteerdSensortype]);
 
+  const periodes = useMemo(() => {
+    const now = new Date();
+    const d7Start = new Date(now);
+    d7Start.setDate(now.getDate() - 6);
+
+    const d30Start = new Date(now);
+    d30Start.setDate(now.getDate() - 30);
+
+    const d3mStart = new Date(now);
+    d3mStart.setMonth(now.getMonth() - 3);
+
+    return [
+      { id: '24u', label: 'Afgelopen 24 uur', datumTekst: `Vandaag, ${formatDatumKort(now)} (uurgemiddelden)` },
+      {
+        id: '7d',
+        label: 'Afgelopen 7 dagen',
+        datumTekst: `${formatDatumKort(d7Start)} – ${formatDatumKort(now)} ${now.getFullYear()}`,
+      },
+      {
+        id: '30d',
+        label: 'Afgelopen 30 dagen',
+        datumTekst: `${formatDatumKort(d30Start)} – ${formatDatumKort(now)} ${now.getFullYear()}`,
+      },
+      {
+        id: '3m',
+        label: 'Afgelopen 3 maanden',
+        datumTekst: `${d3mStart.getDate()} ${MAANDEN_LANG[d3mStart.getMonth()]} – ${now.getDate()} ${MAANDEN_LANG[now.getMonth()]} ${now.getFullYear()}`,
+      },
+    ];
+  }, []);
+
   const huidigePeriode = useMemo(() => {
     return periodes.find(p => p.id === geselecteerdePeriode) || periodes[3];
-  }, [geselecteerdePeriode]);
+  }, [periodes, geselecteerdePeriode]);
 
   // Pas standaardweergave aan per sensor
   useEffect(() => {
@@ -341,9 +380,15 @@ export default function SensordataPage() {
       });
     }
 
-      // 2. AFGELOPEN 7 DAGEN (Dagen van de week)
+      // 2. AFGELOPEN 7 DAGEN (Dagen van de week tot en met vandaag)
       if (geselecteerdePeriode === '7d') {
-        const dagen = ['Ma 19 mei', 'Di 20 mei', 'Wo 21 mei', 'Do 22 mei', 'Vr 23 mei', 'Za 24 mei', 'Zo 25 mei'];
+        const now = new Date();
+        const dagen: string[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(now);
+          d.setDate(now.getDate() - i);
+          dagen.push(formatDagDatumKort(d));
+        }
 
         if (geselecteerdSensortype === 'temperatuur') {
           const baseValues = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
@@ -389,9 +434,15 @@ export default function SensordataPage() {
         });
       }
 
-      // 3. AFGELOPEN 30 DAGEN (Data per 3-4 dagen)
+      // 3. AFGELOPEN 30 DAGEN (Data per 3-4 dagen tot en met vandaag)
       if (geselecteerdePeriode === '30d') {
-        const data30 = ['26 apr', '30 apr', '4 mei', '8 mei', '12 mei', '16 mei', '20 mei', '24 mei', '26 mei'];
+        const now = new Date();
+        const offsets = [28, 24, 21, 17, 14, 10, 7, 3, 0];
+        const data30 = offsets.map(offset => {
+          const d = new Date(now);
+          d.setDate(now.getDate() - offset);
+          return formatDatumKort(d);
+        });
 
         if (geselecteerdSensortype === 'temperatuur') {
           const baseValues = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
@@ -437,11 +488,14 @@ export default function SensordataPage() {
         });
       }
 
-      // 4. AFGELOPEN 3 MAANDEN
-      const data3m = [
-        '15 feb', '22 feb', '1 mrt', '8 mrt', '15 mrt', '22 mrt', '29 mrt',
-        '5 apr', '12 apr', '18 apr', '25 apr', '1 mei', '8 mei', '14 mei',
-      ];
+      // 4. AFGELOPEN 3 MAANDEN (Wekelijkse stappen over de afgelopen 3 maanden tot en met vandaag)
+      const now = new Date();
+      const intervals3m = [91, 84, 77, 70, 63, 56, 49, 42, 35, 28, 21, 14, 7, 0];
+      const data3m = intervals3m.map(offset => {
+        const d = new Date(now);
+        d.setDate(now.getDate() - offset);
+        return formatDatumKort(d);
+      });
 
       if (geselecteerdSensortype === 'temperatuur') {
         const baseValues = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
@@ -1084,16 +1138,16 @@ export default function SensordataPage() {
                     </text>
                   </g>
 
-                  {/* X-AS DATUMLABELS (GELIJKMATIG VERDEELD, MAXIMAAL 6 LABELS ZODAT ZE NOOIT OVERLAPPEN) */}
+                  {/* X-AS DATUMLABELS (BIJ 7 OF MINDER PUNTEN ALLEMAAL TONEN ZODAT GEEN ENKELE DAG ONTBREERT, ANDERS MAX 6) */}
                   {(() => {
                     const total = meetData.length;
                     if (total === 0) return null;
 
-                    const maxTicks = Math.min(6, total);
                     const tickIndices: number[] = [];
-                    if (total <= 6) {
+                    if (total <= 7) {
                       for (let i = 0; i < total; i++) tickIndices.push(i);
                     } else {
+                      const maxTicks = 6;
                       const step = (total - 1) / (maxTicks - 1);
                       for (let i = 0; i < maxTicks; i++) {
                         tickIndices.push(Math.round(i * step));
