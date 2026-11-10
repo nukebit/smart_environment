@@ -16,14 +16,7 @@ import AppHeader from '../components/AppHeader';
 import WeatherValues, { weatherTime } from '../components/WeatherValues';
 import { useWeather } from '../hooks/useWeather';
 import { useDarkMode } from '../hooks/useDarkMode';
-
-// Gebouwen met bijbehorende lokalen
-const gebouwenData: Record<string, string[]> = {
-  Hoofdgebouw: ['Lokaal 2.14', 'Lokaal 1.02', 'Lokaal 3.05', 'Aula A'],
-  'Gebouw A': ['Lokaal A1.01', 'Lokaal A1.04', 'Lokaal A2.08'],
-  'Gebouw B': ['Lokaal B0.12', 'Lokaal B1.15', 'Lokaal B2.03'],
-  Techniekvleugel: ['Werkplaats T1', 'Practicumruimte T2', 'Computerlab T3'],
-};
+import type { Lokaal } from '../types/lokalen';
 
 // Sensortypen met richtlijnen
 const sensorTypen = [
@@ -87,10 +80,18 @@ const periodes = [
 export default function SensordataPage() {
   const [role, setRole] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode();
+  const [lokalen, setLokalen] = useState<Lokaal[]>([]);
+  const [standaardLokaal, setStandaardLokaal] = useState<Lokaal | null>(null);
+  const [lokalenLoading, setLokalenLoading] = useState(true);
+  const [lokalenError, setLokalenError] = useState('');
+  const gebouwenData = useMemo(() => lokalen.reduce<Record<string, string[]>>((result, lokaal) => {
+    (result[lokaal.gebouw] ??= []).push(lokaal.naam);
+    return result;
+  }, Object.create(null)), [lokalen]);
 
   // Filters
-  const [geselecteerdGebouw, setGeselecteerdGebouw] = useState('Hoofdgebouw');
-  const [geselecteerdLokaal, setGeselecteerdLokaal] = useState('Lokaal 2.14');
+  const [geselecteerdGebouw, setGeselecteerdGebouw] = useState('');
+  const [geselecteerdLokaal, setGeselecteerdLokaal] = useState('');
   const [geselecteerdSensortype, setGeselecteerdSensortype] = useState('temperatuur');
   const [geselecteerdePeriode, setGeselecteerdePeriode] = useState('3m');
 
@@ -127,6 +128,35 @@ export default function SensordataPage() {
       });
   }, []);
 
+  // Start met het persoonlijke actieve lokaal en gebruik de door beheerders geregistreerde lokalen.
+  useEffect(() => {
+    if (!role) return;
+    const controller = new AbortController();
+    Promise.all([
+      fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
+      fetch('/api/lokalen/actief', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
+    ]).then(async ([lokalenResponse, actiefResponse]) => {
+      if (lokalenResponse.status === 401 || actiefResponse.status === 401) {
+        window.location.replace('/login');
+        return;
+      }
+      if (!lokalenResponse.ok || !actiefResponse.ok) throw new Error();
+      const alleLokalen: Lokaal[] = await lokalenResponse.json();
+      const actief = await actiefResponse.json();
+      const standaard = alleLokalen.find(lokaal => lokaal.id === actief.lokaal?.id) ?? alleLokalen[0] ?? null;
+      if (controller.signal.aborted) return;
+      setLokalen(alleLokalen);
+      setStandaardLokaal(standaard);
+      setGeselecteerdGebouw(standaard?.gebouw ?? '');
+      setGeselecteerdLokaal(standaard?.naam ?? '');
+    }).catch(() => {
+      if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Probeer het opnieuw via het lokalenoverzicht.');
+    }).finally(() => {
+      if (!controller.signal.aborted) setLokalenLoading(false);
+    });
+    return () => controller.abort();
+  }, [role]);
+
   const handleGebouwChange = (gebouw: string) => {
     setGeselecteerdGebouw(gebouw);
     const lokalen = gebouwenData[gebouw] || [];
@@ -149,8 +179,8 @@ export default function SensordataPage() {
   }, [huidigeSensor]);
 
   const resetFilters = () => {
-    setGeselecteerdGebouw('Hoofdgebouw');
-    setGeselecteerdLokaal('Lokaal 2.14');
+    setGeselecteerdGebouw(standaardLokaal?.gebouw ?? '');
+    setGeselecteerdLokaal(standaardLokaal?.naam ?? '');
     setGeselecteerdSensortype('temperatuur');
     setGeselecteerdePeriode('3m');
     setWeergaveModus('lijn');
@@ -158,12 +188,12 @@ export default function SensordataPage() {
 
   const actieveFiltersCount = useMemo(() => {
     let count = 0;
-    if (geselecteerdGebouw !== 'Hoofdgebouw') count++;
-    if (geselecteerdLokaal !== 'Lokaal 2.14') count++;
+    if (geselecteerdGebouw !== (standaardLokaal?.gebouw ?? '')) count++;
+    if (geselecteerdLokaal !== (standaardLokaal?.naam ?? '')) count++;
     if (geselecteerdSensortype !== 'temperatuur') count++;
     if (geselecteerdePeriode !== '3m') count++;
     return count > 0 ? `${count} actief` : 'Standaard';
-  }, [geselecteerdGebouw, geselecteerdLokaal, geselecteerdSensortype, geselecteerdePeriode]);
+  }, [geselecteerdGebouw, geselecteerdLokaal, geselecteerdSensortype, geselecteerdePeriode, standaardLokaal]);
 
   // Dataset generatie per periode
   const meetData = useMemo(() => {
@@ -451,6 +481,20 @@ export default function SensordataPage() {
   const comfortTopY = getYPos(huidigeSensor.optimaalMax);
   const comfortBottomY = getYPos(huidigeSensor.optimaalMin);
 
+  if (!role) return <main className="p-6"><p role="status">Sessie controleren…</p></main>;
+  if (lokalenLoading || lokalenError || lokalen.length === 0) {
+    return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white">
+      <AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
+      <main className="mx-auto max-w-7xl px-5 py-8">
+        <h1 className="mb-4 text-3xl font-semibold">Sensordata</h1>
+        {lokalenLoading ? <p role="status">Lokalen laden…</p> : <>
+          <p role={lokalenError ? 'alert' : undefined}>{lokalenError || 'Er zijn nog geen lokalen. Een beheerder kan gebouwen en lokalen toevoegen.'}</p>
+          <a href="/lokalen" className="mt-4 inline-block font-semibold text-brand underline">Naar lokalenoverzicht</a>
+        </>}
+      </main>
+    </div>;
+  }
+
   return (
     <div className={darkMode ? 'min-h-screen bg-slate-900 text-slate-100' : 'min-h-screen bg-slate-50 text-slate-800'}>
       {/* HEADER */}
@@ -522,10 +566,11 @@ export default function SensordataPage() {
               <div className="space-y-4">
                 {/* 1. FILTER: GEBOUW */}
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <label htmlFor="sensor-gebouw" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                     Gebouw
                   </label>
                   <select
+                    id="sensor-gebouw"
                     value={geselecteerdGebouw}
                     onChange={e => handleGebouwChange(e.target.value)}
                     className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
@@ -542,10 +587,11 @@ export default function SensordataPage() {
 
                 {/* 2. FILTER: LOKAAL */}
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <label htmlFor="sensor-lokaal" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                     Lokaal
                   </label>
                   <select
+                    id="sensor-lokaal"
                     value={geselecteerdLokaal}
                     onChange={e => setGeselecteerdLokaal(e.target.value)}
                     className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-sm transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
