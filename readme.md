@@ -224,17 +224,54 @@ smart_environment/
 │   ├── Users/           Gebruikersbeheer (CRUD) voor de Beheerder
 │   ├── appsettings.json Verbinding met de database
 │   └── Program.cs       Start de server en koppelt alle onderdelen
-└── frontend/
-    ├── public/          Logo en andere afbeeldingen
-    └── src/
-        ├── components/  Stukken die op meerdere pagina's terugkomen (AppHeader)
-        ├── hooks/       Herbruikbare logica (useDarkMode)
-        ├── pages/       Eén bestand per pagina: LoginPage, DashboardPage, BeheerPage
-        ├── index.css    Tailwind en eigen kleuren
-        └── main.tsx     Kiest de pagina op basis van de URL
+├── frontend/
+│   ├── public/          Logo en andere afbeeldingen
+│   └── src/
+│       ├── components/  Stukken die op meerdere pagina's terugkomen (AppHeader)
+│       ├── hooks/       Herbruikbare logica (useDarkMode)
+│       ├── pages/       Eén bestand per pagina: LoginPage, DashboardPage, BeheerPage
+│       ├── index.css    Tailwind en eigen kleuren
+│       └── main.tsx     Kiest de pagina op basis van de URL
+└── tests/
+    └── SmartEnvironment.Api.Tests/
+        ├── Unit/          Unit testen (los, zonder server)
+        ├── Integration/   HTTP-integratietesten en security testen
+        └── TestApp.cs     Start de backend met een eigen test-database
 ```
 
 Nieuwe onderdelen (bijvoorbeeld sensordata) krijgen in `backend` een eigen map, zoals `Sensors/`, en in `frontend/src/pages` een eigen pagina.
+
+---
+
+## Testen
+
+De backend heeft automatische testen met **xUnit** in `tests/SmartEnvironment.Api.Tests`.
+
+```powershell
+dotnet test tests/SmartEnvironment.Api.Tests
+```
+
+De testen starten de backend zelf, met een **eigen tijdelijke database**. Je eigen `auth.db` en user-secrets worden niet gebruikt of aangepast. **Stop eerst de backend** (Ctrl+C), anders kan Windows de bestanden niet opnieuw bouwen.
+
+| Map / bestand | Soort test | Wat wordt getest |
+|---|---|---|
+| `Unit/ValidatieTests.cs` | Unit test | Invoercontrole (`ApiFilters.Validate`), foutmeldingen, rollen |
+| `Integration/AuthEndpointsTests.cs` | HTTP-integratietest | Inloggen, CSRF, `/me`, uitloggen |
+| `Integration/UserEndpointsTests.cs` | HTTP-integratietest | Rolbeleid (401 / 403) en CRUD van accounts |
+| `Integration/LockoutTests.cs` | Security test | Account geblokkeerd na 5 foute wachtwoorden |
+| `Integration/RateLimitTests.cs` | Security test | Maximaal 20 login-verzoeken per minuut (429) |
+| `TestApp.cs` | Hulpklasse | Start de backend met test-database en testaccounts |
+
+Testnamen volgen `Methode_Scenario_Verwachting`, bijvoorbeeld `GetUsers_AlsDocent_Geeft403`.
+Nieuwe testbestanden zet je **in** de map `tests/SmartEnvironment.Api.Tests` (bijvoorbeeld in `Unit/` of `Integration/`), anders worden ze niet meegebouwd.
+
+Code coverage meten:
+
+```powershell
+dotnet test tests/SmartEnvironment.Api.Tests --collect:"XPlat Code Coverage"
+```
+
+Het resultaat staat daarna in de map `TestResults`.
 
 ---
 
@@ -284,3 +321,4 @@ dotnet user-secrets set "UrbanSense:ApiKey" "KEY-UIT-DE-MAIL-VAN-DE-DOCENT"
 | `Port 5080 is already in use` | Er draait al een backend. Stop die met **Ctrl+C** of sluit de oude terminal |
 | `/api/...` geeft 401 terwijl je ingelogd bent | Je hebt de link vanuit een andere site geopend. **Typ** het adres zelf in de adresbalk (de cookie is `SameSite=Strict`) |
 | `dotnet ef` wordt niet herkend | Na `dotnet tool install --global dotnet-ef` de terminal sluiten en een nieuwe openen |
+| `dotnet test` zegt `total: 0` of `No test is available` | Het testbestand staat buiten de map `tests/SmartEnvironment.Api.Tests`. Verplaats het naar `Unit/` of `Integration/` in die map |
