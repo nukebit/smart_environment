@@ -262,7 +262,19 @@ export default function SensordataPage() {
     // Als er live API telemetrie is voor dit lokaal, gebruik dan de echte metingen uit de Urban Sense API
     if (apiTelemetry && apiTelemetry.length > 0) {
       const chronologisch = [...apiTelemetry].reverse();
-      return chronologisch.map(m => {
+      // Downsample tot maximaal 18 punten zodat de grafiek rustig en overzichtelijk blijft
+      const targetCount = Math.min(18, chronologisch.length);
+      const sampled: typeof chronologisch = [];
+      if (chronologisch.length <= targetCount) {
+        sampled.push(...chronologisch);
+      } else {
+        const step = (chronologisch.length - 1) / (targetCount - 1);
+        for (let i = 0; i < targetCount; i++) {
+          sampled.push(chronologisch[Math.round(i * step)]);
+        }
+      }
+
+      return sampled.map(m => {
         const d = new Date(m.timestamp);
         const datum = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
         let rawVal = 0;
@@ -966,7 +978,7 @@ export default function SensordataPage() {
                                 cx={x}
                                 cy={y}
                                 r="4.5"
-                                fill="#0284c7"
+                                fill="#ef4444"
                                 stroke="#ffffff"
                                 strokeWidth="1.5"
                               />
@@ -990,7 +1002,7 @@ export default function SensordataPage() {
                   {weergaveModus === 'staaf' && (
                     <g>
                       {meetData.map((d, i) => {
-                        const barWidth = Math.max(12, Math.min(24, (graphWidth / meetData.length) * 0.6));
+                        const barWidth = Math.max(8, Math.min(22, (graphWidth / meetData.length) * 0.65));
                         const x = getXPos(i) - barWidth / 2;
                         const y = getYPos(d.waarde);
                         const bottomY = padding.top + graphHeight;
@@ -1009,11 +1021,11 @@ export default function SensordataPage() {
                               width={barWidth}
                               height={barHeight}
                               rx="3"
-                              fill={d.status === 'te-hoog' ? '#d97706' : d.status === 'te-laag' ? '#0284c7' : huidigeSensor.kleur}
+                              fill={d.status === 'te-hoog' ? '#d97706' : d.status === 'te-laag' ? '#ef4444' : huidigeSensor.kleur}
                               opacity={d.status === 'optimaal' ? 0.85 : 0.95}
                             />
                             {d.status !== 'optimaal' && (
-                              <circle cx={x + barWidth / 2} cy={y - 5} r="2.5" fill={d.status === 'te-hoog' ? '#d97706' : '#0284c7'} />
+                              <circle cx={x + barWidth / 2} cy={y - 5} r="2.5" fill={d.status === 'te-hoog' ? '#d97706' : '#ef4444'} />
                             )}
                           </g>
                         );
@@ -1083,23 +1095,42 @@ export default function SensordataPage() {
                     </text>
                   </g>
 
-                  {/* X-AS DATUMLABELS */}
-                  {meetData.map((d, i) => {
-                    if (meetData.length > 10 && i % 2 !== 0 && i !== meetData.length - 1) return null;
-                    const x = getXPos(i);
-                    return (
-                      <text
-                        key={i}
-                        x={x}
-                        y={chartHeight - padding.bottom + 22}
-                        textAnchor="middle"
-                        fontSize="11"
-                        fill={darkMode ? '#64748b' : '#94a3b8'}
-                      >
-                        {d.datum}
-                      </text>
-                    );
-                  })}
+                  {/* X-AS DATUMLABELS (GELIJKMATIG VERDEELD, MAXIMAAL 6 LABELS ZODAT ZE NOOIT OVERLAPPEN) */}
+                  {(() => {
+                    const total = meetData.length;
+                    if (total === 0) return null;
+
+                    const maxTicks = Math.min(6, total);
+                    const tickIndices: number[] = [];
+                    if (total <= 6) {
+                      for (let i = 0; i < total; i++) tickIndices.push(i);
+                    } else {
+                      const step = (total - 1) / (maxTicks - 1);
+                      for (let i = 0; i < maxTicks; i++) {
+                        tickIndices.push(Math.round(i * step));
+                      }
+                    }
+
+                    return tickIndices.map(idx => {
+                      const d = meetData[idx];
+                      if (!d) return null;
+                      const x = getXPos(idx);
+
+                      return (
+                        <text
+                          key={idx}
+                          x={x}
+                          y={chartHeight - padding.bottom + 22}
+                          textAnchor="middle"
+                          fontSize="11"
+                          fontWeight="500"
+                          fill={darkMode ? '#94a3b8' : '#64748b'}
+                        >
+                          {d.datum}
+                        </text>
+                      );
+                    });
+                  })()}
                 </svg>
 
                 {/* SLIMME HOVER TOOLTIP */}
@@ -1124,7 +1155,7 @@ export default function SensordataPage() {
                         </p>
                       )}
                       {hoveredPoint.status === 'te-laag' && (
-                        <p className="mt-0.5 text-[11px] font-semibold text-sky-400">
+                        <p className="mt-0.5 text-[11px] font-semibold text-rose-500">
                           ⚠ {hoveredPoint.statusText}
                         </p>
                       )}
