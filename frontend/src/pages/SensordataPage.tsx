@@ -133,32 +133,31 @@ export default function SensordataPage() {
       });
   }, []);
 
-  // Start met het persoonlijke actieve lokaal en gebruik de door beheerders geregistreerde lokalen.
+  // Laad de geregistreerde lokalen voor de filters.
   useEffect(() => {
     if (!role) return;
     const controller = new AbortController();
-    Promise.all([
-      fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
-      fetch('/api/lokalen/actief', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
-    ]).then(async ([lokalenResponse, actiefResponse]) => {
-      if (lokalenResponse.status === 401 || actiefResponse.status === 401) {
-        window.location.replace('/login');
-        return;
-      }
-      if (!lokalenResponse.ok || !actiefResponse.ok) throw new Error();
-      const alleLokalen: Lokaal[] = await lokalenResponse.json();
-      const actief = await actiefResponse.json();
-      const standaard = alleLokalen.find(lokaal => lokaal.id === actief.lokaal?.id) ?? alleLokalen[0] ?? null;
-      if (controller.signal.aborted) return;
-      setLokalen(alleLokalen);
-      setStandaardLokaal(standaard);
-      setGeselecteerdGebouw(standaard?.gebouw ?? '');
-      setGeselecteerdLokaal(standaard?.naam ?? '');
-    }).catch(() => {
-      if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Probeer het opnieuw via het lokalenoverzicht.');
-    }).finally(() => {
-      if (!controller.signal.aborted) setLokalenLoading(false);
-    });
+    fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        if (response.status === 401) {
+          window.location.replace('/login');
+          return;
+        }
+        if (!response.ok) throw new Error();
+        const alleLokalen: Lokaal[] = await response.json();
+        const standaard = alleLokalen[0] ?? null;
+        if (controller.signal.aborted) return;
+        setLokalen(alleLokalen);
+        setStandaardLokaal(standaard);
+        setGeselecteerdGebouw(standaard?.gebouw ?? '');
+        setGeselecteerdLokaal(standaard?.naam ?? '');
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Probeer het opnieuw via het lokalenoverzicht.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLokalenLoading(false);
+      });
     return () => controller.abort();
   }, [role]);
 
