@@ -33,18 +33,6 @@ const sensorTypen = [
     beschrijving: 'Aanbevolen binnentemperatuur voor een optimaal leercomfort in lokalen.',
   },
   {
-    id: 'co2',
-    label: 'CO₂ ppm',
-    naam: 'CO₂',
-    eenheid: 'ppm',
-    defaultGrens: 1000,
-    optimaalMin: 400,
-    optimaalMax: 800,
-    standaardWeergave: 'staaf' as const,
-    kleur: '#2563eb',
-    beschrijving: 'Ventilatienorm conform de Frisse Scholen richtlijn (Klasse B).',
-  },
-  {
     id: 'luchtvochtigheid',
     label: 'Luchtvochtigheid %',
     naam: 'Luchtvochtigheid',
@@ -99,13 +87,22 @@ export default function SensordataPage() {
   const [weergaveModus, setWeergaveModus] = useState<'lijn' | 'staaf'>('lijn');
   const [toonComfortzone, setToonComfortzone] = useState(true);
 
+  // Dynamische lokalen uit de database & API telemetrie
+  const [apiTelemetry, setApiTelemetry] = useState<Array<{
+    timestamp: string;
+    temperature?: number;
+    humidity?: number;
+    pressure?: number;
+  }> | null>(null);
+  const [activeDeviceId, setActiveDeviceId] = useState<string>('');
+
   // Hover state
   const [hoveredPoint, setHoveredPoint] = useState<{
     x: number;
     y: number;
     datum: string;
     waarde: number;
-    isOverschrijding: boolean;
+    status: 'te-hoog' | 'te-laag' | 'optimaal';
     statusText: string;
   } | null>(null);
 
@@ -128,40 +125,58 @@ export default function SensordataPage() {
       });
   }, []);
 
-  // Start met het persoonlijke actieve lokaal en gebruik de door beheerders geregistreerde lokalen.
+  // Laad de geregistreerde lokalen voor de filters.
   useEffect(() => {
     if (!role) return;
     const controller = new AbortController();
-    Promise.all([
-      fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
-      fetch('/api/lokalen/actief', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
-    ]).then(async ([lokalenResponse, actiefResponse]) => {
-      if (lokalenResponse.status === 401 || actiefResponse.status === 401) {
-        window.location.replace('/login');
-        return;
-      }
-      if (!lokalenResponse.ok || !actiefResponse.ok) throw new Error();
-      const alleLokalen: Lokaal[] = await lokalenResponse.json();
-      const actief = await actiefResponse.json();
-      const standaard = alleLokalen.find(lokaal => lokaal.id === actief.lokaal?.id) ?? alleLokalen[0] ?? null;
-      if (controller.signal.aborted) return;
-      setLokalen(alleLokalen);
-      setStandaardLokaal(standaard);
-      setGeselecteerdGebouw(standaard?.gebouw ?? '');
-      setGeselecteerdLokaal(standaard?.naam ?? '');
-    }).catch(() => {
-      if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Probeer het opnieuw via het lokalenoverzicht.');
-    }).finally(() => {
-      if (!controller.signal.aborted) setLokalenLoading(false);
-    });
+    fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        if (response.status === 401) {
+          window.location.replace('/login');
+          return;
+        }
+        if (!response.ok) throw new Error();
+        const alleLokalen: Lokaal[] = await response.json();
+        const standaard = alleLokalen[0] ?? null;
+        if (controller.signal.aborted) return;
+        setLokalen(alleLokalen);
+        setStandaardLokaal(standaard);
+        setGeselecteerdGebouw(standaard?.gebouw ?? '');
+        setGeselecteerdLokaal(standaard?.naam ?? '');
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Probeer het opnieuw via het lokalenoverzicht.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLokalenLoading(false);
+      });
     return () => controller.abort();
   }, [role]);
 
+  // Haal actuele sensordata en telemetrie op voor het geselecteerde lokaal
+  useEffect(() => {
+    if (!role || !geselecteerdLokaal) return;
+    const cleanRoom = geselecteerdLokaal.replace(/^Lokaal\s+/i, '');
+    fetch(`/api/sensors/room-data?room=${encodeURIComponent(cleanRoom)}&limit=100`, { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data?.telemetry && Array.isArray(data.telemetry) && data.telemetry.length > 0) {
+          setApiTelemetry(data.telemetry);
+          if (data.deviceId) setActiveDeviceId(data.deviceId);
+        } else {
+          setApiTelemetry(null);
+        }
+      })
+      .catch(() => {
+        setApiTelemetry(null);
+      });
+  }, [geselecteerdLokaal, role]);
+
   const handleGebouwChange = (gebouw: string) => {
     setGeselecteerdGebouw(gebouw);
-    const lokalen = gebouwenData[gebouw] || [];
-    if (lokalen.length > 0 && !lokalen.includes(geselecteerdLokaal)) {
-      setGeselecteerdLokaal(lokalen[0]);
+    const lokalenInGebouw = gebouwenData[gebouw] || [];
+    if (lokalenInGebouw.length > 0 && !lokalenInGebouw.includes(geselecteerdLokaal)) {
+      setGeselecteerdLokaal(lokalenInGebouw[0]);
     }
   };
 
@@ -195,49 +210,123 @@ export default function SensordataPage() {
     return count > 0 ? `${count} actief` : 'Standaard';
   }, [geselecteerdGebouw, geselecteerdLokaal, geselecteerdSensortype, geselecteerdePeriode, standaardLokaal]);
 
-  // Dataset generatie per periode
+  // Dataset generatie per periode en integratie met echte API sensordata
   const meetData = useMemo(() => {
+    // Bereken een stabiele, realistische klimaat-vingerafdruk per specifiek lokaal
+    let roomHash = 0;
+    for (let i = 0; i < geselecteerdLokaal.length; i++) {
+      roomHash = (roomHash << 5) - roomHash + geselecteerdLokaal.charCodeAt(i);
+      roomHash |= 0;
+    }
+    const norm = Math.abs(roomHash);
+    const tempOffset = ((norm % 48) - 22) / 10; // -2.2°C tot +2.5°C
+    const humOffset = (norm % 19) - 8;           // -8% tot +10%
+    const pressOffset = (norm % 7) - 3;          // -3 hPa tot +3 hPa
+    const seed = norm % 10;
+
+    const classify = (val: number) => {
+      const isExceeded = val >= huidigeSensor.defaultGrens;
+      const isTooLow = val < huidigeSensor.optimaalMin;
+      const status: 'te-hoog' | 'te-laag' | 'optimaal' = isExceeded
+        ? 'te-hoog'
+        : isTooLow
+        ? 'te-laag'
+        : 'optimaal';
+
+      const statusText = isExceeded
+        ? 'Boven alarmgrens'
+        : isTooLow
+        ? `Onder de ondergrens (${huidigeSensor.id === 'temperatuur' ? 'te koel' : huidigeSensor.id === 'luchtvochtigheid' ? 'te droog' : 'lage druk'})`
+        : 'Binnen optimaal bereik';
+
+      return {
+        status,
+        statusText,
+        isOverschrijding: isExceeded || isTooLow,
+      };
+    };
+
+    const getAdjustedValue = (baseVal: number, idx: number) => {
+      if (geselecteerdSensortype === 'temperatuur') {
+        const wave = Math.sin(idx * 0.7 + seed) * 0.5;
+        return Math.round((baseVal + tempOffset + wave) * 10) / 10;
+      }
+      if (geselecteerdSensortype === 'luchtvochtigheid') {
+        const wave = Math.cos(idx * 0.6 + seed) * 2;
+        return Math.round(Math.min(95, Math.max(25, baseVal + humOffset + wave)));
+      }
+      return Math.round(baseVal + pressOffset);
+    };
+
+    // Als er live API telemetrie is voor dit lokaal, gebruik dan de echte metingen uit de Urban Sense API
+    if (apiTelemetry && apiTelemetry.length > 0) {
+      const chronologisch = [...apiTelemetry].reverse();
+      return chronologisch.map(m => {
+        const d = new Date(m.timestamp);
+        const datum = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        let rawVal = 0;
+        if (geselecteerdSensortype === 'temperatuur') rawVal = m.temperature ?? 0;
+        else if (geselecteerdSensortype === 'luchtvochtigheid') rawVal = m.humidity ?? 0;
+        else rawVal = m.pressure ?? 0;
+
+        const val = Math.round(rawVal * 10) / 10;
+        const cl = classify(val);
+        return {
+          datum,
+          waarde: val,
+          status: cl.status,
+          statusText: cl.statusText,
+          isOverschrijding: cl.isOverschrijding,
+        };
+      });
+    }
+
     // 1. AFGELOPEN 24 UUR (Tijdstippen in uren)
     if (geselecteerdePeriode === '24u') {
       const uren = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00', '06:00', 'Nu'];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const values = [19.2, 20.8, 22.4, 24.1, 23.8, 22.1, 20.7, 19.8, 18.9, 18.3, 18.1, 18.6, 20.2];
-        return uren.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Warmtepiek in lesuur' : 'Normaal',
-        }));
-      }
-
-      if (geselecteerdSensortype === 'co2') {
-        const values = [520, 850, 1080, 1150, 920, 610, 500, 480, 440, 430, 420, 430, 510];
-        return uren.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Onvoldoende ventilatie' : 'Goed geventileerd',
-        }));
+        const baseValues = [19.2, 20.8, 22.4, 24.1, 23.8, 22.1, 20.7, 19.8, 18.9, 18.3, 18.1, 18.6, 20.2];
+        return uren.map((datum, idx) => {
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const values = [48, 52, 56, 59, 57, 54, 53, 51, 50, 49, 48, 49, 51];
-        return uren.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= 70 ? 'Te vochtig' : 'Ideaal vochtgehalte',
-        }));
+        const baseValues = [48, 52, 56, 59, 57, 54, 53, 51, 50, 49, 48, 49, 51];
+        return uren.map((datum, idx) => {
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
-      const values = [1015, 1016, 1017, 1017, 1018, 1019, 1020, 1020, 1021, 1021, 1022, 1022, 1023];
-      return uren.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: 'Stabiele barometer',
-      }));
+      const baseValues = [1015, 1016, 1017, 1017, 1018, 1019, 1020, 1020, 1021, 1021, 1022, 1022, 1023];
+      return uren.map((datum, idx) => {
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
+        return {
+          datum,
+          waarde: val,
+          status: cl.status,
+          statusText: cl.statusText,
+          isOverschrijding: cl.isOverschrijding,
+        };
+      });
     }
 
     // 2. AFGELOPEN 7 DAGEN (Dagen van de week)
@@ -245,42 +334,47 @@ export default function SensordataPage() {
       const dagen = ['Ma 19 mei', 'Di 20 mei', 'Wo 21 mei', 'Do 22 mei', 'Vr 23 mei', 'Za 24 mei', 'Zo 25 mei'];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const values = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
-        return dagen.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Grensoverschrijding' : 'Normaal',
-        }));
-      }
-
-      if (geselecteerdSensortype === 'co2') {
-        const values = [880, 1050, 1120, 940, 890, 460, 440];
-        return dagen.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Te hoog CO₂' : 'Frisse lucht',
-        }));
+        const baseValues = [21.4, 22.8, 24.2, 23.7, 22.1, 19.5, 19.2];
+        return dagen.map((datum, idx) => {
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const values = [52, 55, 68, 72, 64, 49, 47];
-        return dagen.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= 70 ? 'Vochtig' : 'Ideaal',
-        }));
+        const baseValues = [52, 55, 68, 72, 64, 49, 47];
+        return dagen.map((datum, idx) => {
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
-      const values = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
-      return dagen.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: 'Normale luchtdruk',
-      }));
+      const baseValues = [1014, 1017, 1021, 1019, 1024, 1026, 1022];
+      return dagen.map((datum, idx) => {
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
+        return {
+          datum,
+          waarde: val,
+          status: cl.status,
+          statusText: cl.statusText,
+          isOverschrijding: cl.isOverschrijding,
+        };
+      });
     }
 
     // 3. AFGELOPEN 30 DAGEN (Data per 3-4 dagen)
@@ -288,42 +382,47 @@ export default function SensordataPage() {
       const data30 = ['26 apr', '30 apr', '4 mei', '8 mei', '12 mei', '16 mei', '20 mei', '24 mei', '26 mei'];
 
       if (geselecteerdSensortype === 'temperatuur') {
-        const values = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
-        return data30.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Warme lesdag' : 'Comfortabel',
-        }));
-      }
-
-      if (geselecteerdSensortype === 'co2') {
-        const values = [810, 950, 1140, 880, 1080, 910, 860, 520, 840];
-        return data30.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= 1000 ? 'Ventilatieadvies' : 'Voldoende',
-        }));
+        const baseValues = [20.1, 21.3, 23.9, 22.4, 24.5, 23.1, 22.6, 21.8, 22.2];
+        return data30.map((datum, idx) => {
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
       if (geselecteerdSensortype === 'luchtvochtigheid') {
-        const values = [51, 58, 64, 73, 66, 61, 55, 52, 56];
-        return data30.map((datum, idx) => ({
-          datum,
-          waarde: values[idx],
-          isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-          statusText: values[idx] >= 70 ? 'Te vochtig' : 'Goed',
-        }));
+        const baseValues = [51, 58, 64, 73, 66, 61, 55, 52, 56];
+        return data30.map((datum, idx) => {
+          const val = getAdjustedValue(baseValues[idx], idx);
+          const cl = classify(val);
+          return {
+            datum,
+            waarde: val,
+            status: cl.status,
+            statusText: cl.statusText,
+            isOverschrijding: cl.isOverschrijding,
+          };
+        });
       }
 
-      const values = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
-      return data30.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: 'Stabiel',
-      }));
+      const baseValues = [1013, 1018, 1022, 1016, 1025, 1028, 1021, 1019, 1023];
+      return data30.map((datum, idx) => {
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
+        return {
+          datum,
+          waarde: val,
+          status: cl.status,
+          statusText: cl.statusText,
+          isOverschrijding: cl.isOverschrijding,
+        };
+      });
     }
 
     // 4. AFGELOPEN 3 MAANDEN
@@ -333,43 +432,48 @@ export default function SensordataPage() {
     ];
 
     if (geselecteerdSensortype === 'temperatuur') {
-      const values = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
-      return data3m.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: values[idx] >= huidigeSensor.defaultGrens ? 'Grensoverschrijding' : 'Normaal',
-      }));
-    }
-
-    if (geselecteerdSensortype === 'co2') {
-      const values = [580, 640, 720, 810, 750, 920, 880, 1050, 940, 1180, 990, 1120, 890, 1040];
-      return data3m.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: values[idx] >= 1000 ? 'Grensoverschrijding' : 'Goed geventileerd',
-      }));
+      const baseValues = [18.2, 18.9, 19.8, 19.5, 20.4, 21.6, 21.2, 22.4, 21.5, 23.9, 22.3, 24.8, 23.1, 24.2];
+      return data3m.map((datum, idx) => {
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
+        return {
+          datum,
+          waarde: val,
+          status: cl.status,
+          statusText: cl.statusText,
+          isOverschrijding: cl.isOverschrijding,
+        };
+      });
     }
 
     if (geselecteerdSensortype === 'luchtvochtigheid') {
-      const values = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
-      return data3m.map((datum, idx) => ({
-        datum,
-        waarde: values[idx],
-        isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-        statusText: values[idx] >= 70 ? 'Hoge luchtvochtigheid' : 'Ideale luchtvochtigheid',
-      }));
+      const baseValues = [45, 48, 52, 54, 58, 62, 59, 68, 64, 73, 67, 72, 61, 65];
+      return data3m.map((datum, idx) => {
+        const val = getAdjustedValue(baseValues[idx], idx);
+        const cl = classify(val);
+        return {
+          datum,
+          waarde: val,
+          status: cl.status,
+          statusText: cl.statusText,
+          isOverschrijding: cl.isOverschrijding,
+        };
+      });
     }
 
-    const values = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
-    return data3m.map((datum, idx) => ({
-      datum,
-      waarde: values[idx],
-      isOverschrijding: values[idx] >= huidigeSensor.defaultGrens,
-      statusText: 'Normale luchtdruk',
-    }));
-  }, [geselecteerdePeriode, geselecteerdSensortype, huidigeSensor]);
+    const baseValues = [1012, 1014, 1018, 1016, 1021, 1025, 1019, 1022, 1017, 1029, 1024, 1030, 1023, 1026];
+    return data3m.map((datum, idx) => {
+      const val = getAdjustedValue(baseValues[idx], idx);
+      const cl = classify(val);
+      return {
+        datum,
+        waarde: val,
+        status: cl.status,
+        statusText: cl.statusText,
+        isOverschrijding: cl.isOverschrijding,
+      };
+    });
+  }, [apiTelemetry, geselecteerdePeriode, geselecteerdLokaal, geselecteerdSensortype, huidigeSensor]);
 
   // Statistische calculaties
   const statistieken = useMemo(() => {
@@ -416,9 +520,6 @@ export default function SensordataPage() {
   const { yMin, yMax, ySteps } = useMemo(() => {
     if (geselecteerdSensortype === 'temperatuur') {
       return { yMin: 16, yMax: 26, ySteps: [16, 18, 20, 22, 24, 26] };
-    }
-    if (geselecteerdSensortype === 'co2') {
-      return { yMin: 400, yMax: 1300, ySteps: [400, 600, 800, 1000, 1200] };
     }
     if (geselecteerdSensortype === 'luchtvochtigheid') {
       return { yMin: 30, yMax: 80, ySteps: [30, 40, 50, 60, 70, 80] };
@@ -720,6 +821,11 @@ export default function SensordataPage() {
                     <span className="font-semibold text-slate-800 dark:text-slate-200">{geselecteerdGebouw}</span>
                     {' · '}
                     <span>{geselecteerdLokaal}</span>
+                    {activeDeviceId && (
+                      <span className="ml-2 inline-flex items-center rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                        Live sensor: {activeDeviceId}
+                      </span>
+                    )}
                     {' · '}
                     <span>{huidigePeriode.datumTekst}</span>
                   </p>
@@ -830,8 +936,6 @@ export default function SensordataPage() {
                       {meetData.map((d, i) => {
                         const x = getXPos(i);
                         const y = getYPos(d.waarde);
-                        const isExceeded = d.waarde >= huidigeSensor.defaultGrens;
-                        const isTooLow = d.waarde < huidigeSensor.optimaalMin;
 
                         return (
                           <g
@@ -842,16 +946,12 @@ export default function SensordataPage() {
                               y,
                               datum: d.datum,
                               waarde: d.waarde,
-                              isOverschrijding: isExceeded,
-                              statusText: isExceeded
-                                ? 'Boven alarmgrens'
-                                : isTooLow
-                                ? 'Onder de ondergrens (te koel)'
-                                : 'Binnen optimaal bereik',
+                              status: d.status,
+                              statusText: d.statusText,
                             })}
                             onMouseLeave={() => setHoveredPoint(null)}
                           >
-                            {isExceeded ? (
+                            {d.status === 'te-hoog' ? (
                               <circle
                                 cx={x}
                                 cy={y}
@@ -860,7 +960,7 @@ export default function SensordataPage() {
                                 stroke="#ffffff"
                                 strokeWidth="1.5"
                               />
-                            ) : isTooLow ? (
+                            ) : d.status === 'te-laag' ? (
                               <circle
                                 cx={x}
                                 cy={y}
@@ -894,13 +994,12 @@ export default function SensordataPage() {
                         const y = getYPos(d.waarde);
                         const bottomY = padding.top + graphHeight;
                         const barHeight = Math.max(4, bottomY - y);
-                        const isExceeded = d.isOverschrijding;
 
                         return (
                           <g
                             key={i}
                             className="cursor-pointer transition-opacity hover:opacity-80"
-                            onMouseEnter={() => setHoveredPoint({ x: x + barWidth / 2, y, datum: d.datum, waarde: d.waarde, isOverschrijding: isExceeded, statusText: d.statusText })}
+                            onMouseEnter={() => setHoveredPoint({ x: x + barWidth / 2, y, datum: d.datum, waarde: d.waarde, status: d.status, statusText: d.statusText })}
                             onMouseLeave={() => setHoveredPoint(null)}
                           >
                             <rect
@@ -909,11 +1008,11 @@ export default function SensordataPage() {
                               width={barWidth}
                               height={barHeight}
                               rx="3"
-                              fill={isExceeded ? '#d97706' : huidigeSensor.kleur}
-                              opacity={isExceeded ? 0.95 : 0.85}
+                              fill={d.status === 'te-hoog' ? '#d97706' : d.status === 'te-laag' ? '#0284c7' : huidigeSensor.kleur}
+                              opacity={d.status === 'optimaal' ? 0.85 : 0.95}
                             />
-                            {isExceeded && (
-                              <circle cx={x + barWidth / 2} cy={y - 5} r="2.5" fill="#d97706" />
+                            {d.status !== 'optimaal' && (
+                              <circle cx={x + barWidth / 2} cy={y - 5} r="2.5" fill={d.status === 'te-hoog' ? '#d97706' : '#0284c7'} />
                             )}
                           </g>
                         );
@@ -1018,9 +1117,21 @@ export default function SensordataPage() {
                       <p className="text-sm font-bold text-white">
                         {hoveredPoint.waarde} {huidigeSensor.eenheid}
                       </p>
-                      <p className={`mt-0.5 text-[11px] ${hoveredPoint.isOverschrijding ? 'font-semibold text-amber-400' : 'text-emerald-400'}`}>
-                        {hoveredPoint.isOverschrijding ? '⚠ ' : '✓ '}{hoveredPoint.statusText}
-                      </p>
+                      {hoveredPoint.status === 'te-hoog' && (
+                        <p className="mt-0.5 text-[11px] font-semibold text-amber-400">
+                          ⚠ {hoveredPoint.statusText}
+                        </p>
+                      )}
+                      {hoveredPoint.status === 'te-laag' && (
+                        <p className="mt-0.5 text-[11px] font-semibold text-sky-400">
+                          ⚠ {hoveredPoint.statusText}
+                        </p>
+                      )}
+                      {hoveredPoint.status === 'optimaal' && (
+                        <p className="mt-0.5 text-[11px] text-emerald-400">
+                          ✓ {hoveredPoint.statusText}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}

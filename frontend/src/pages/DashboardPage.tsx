@@ -16,7 +16,6 @@ import type { Lokaal } from '../types/lokalen';
 // Tijdelijke voorbeeldgegevens.
 // Later vervangen we deze door gegevens uit de backend.
 const sensorData = {
-  lokaal: '2.14',
   temperatuur: 24.8,
   luchtvochtigheid: 48,
   luchtdruk: 1013,
@@ -30,7 +29,6 @@ export default function DashboardPage() {
   const [darkMode, toggleDarkMode] = useDarkMode(); // Wordt onthouden tussen pagina's.
   const [activePage, setActivePage] = useState('Dashboard');
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
-  const [actiefLokaal, setActiefLokaal] = useState<Lokaal | null>(null);
   const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
 
@@ -65,19 +63,16 @@ export default function DashboardPage() {
     Promise.all([
       fetch('/api/lokalen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
       fetch('/api/gebouwen', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
-      fetch('/api/lokalen/actief', { credentials: 'include', cache: 'no-store', signal: controller.signal }),
     ])
-      .then(async ([lokalenResponse, gebouwenResponse, actiefResponse]) => {
-        if (lokalenResponse.status === 401 || gebouwenResponse.status === 401 || actiefResponse.status === 401) {
+      .then(async ([lokalenResponse, gebouwenResponse]) => {
+        if (lokalenResponse.status === 401 || gebouwenResponse.status === 401) {
           window.location.replace('/login');
           return;
         }
-        if (!lokalenResponse.ok || !gebouwenResponse.ok || !actiefResponse.ok) throw new Error();
+        if (!lokalenResponse.ok || !gebouwenResponse.ok) throw new Error();
         const gebouwen = await gebouwenResponse.json();
         setAantalGebouwen(gebouwen.length);
         setLokalen(await lokalenResponse.json());
-        const actief = await actiefResponse.json();
-        setActiefLokaal(actief.lokaal);
       })
       .catch(() => {
         if (!controller.signal.aborted) setLokalenError('Lokalen laden mislukt. Open het overzicht om opnieuw te proberen.');
@@ -112,7 +107,7 @@ export default function DashboardPage() {
   const kaarten = [
     {
       titel: 'Sensordata & Historie',
-      beschrijving: actiefLokaal ? `Voorbeeldmetingen · ${actiefLokaal.naam} · ${actiefLokaal.gebouw}` : 'Kies jouw actieve lokaal in het lokalenoverzicht',
+      beschrijving: 'Bekijk klimaatmetingen per lokaal',
       detail: (
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
@@ -138,7 +133,7 @@ export default function DashboardPage() {
     },
     {
       titel: 'Lokalenoverzicht',
-      beschrijving: isBeheerder ? 'Beheer gebouwen en lokalen' : 'Bekijk alle lokalen en kies jouw actieve lokaal',
+      beschrijving: isBeheerder ? 'Beheer gebouwen en lokalen' : 'Bekijk alle lokalen',
       detail: (
         <div className="rounded-lg border-l-2 border-blue-600 bg-slate-50 p-3 dark:bg-slate-900/60 dark:text-slate-100">
           {lokalenError ? <p role="alert" className="text-sm text-red-700 dark:text-red-400">{lokalenError}</p>
@@ -147,10 +142,7 @@ export default function DashboardPage() {
               <p className="font-semibold">
                 {aantalGebouwen} {aantalGebouwen === 1 ? 'gebouw' : 'gebouwen'} · {lokalen.length} {lokalen.length === 1 ? 'lokaal' : 'lokalen'}
               </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {actiefLokaal ? `Jouw actieve lokaal: ${actiefLokaal.naam} · ${actiefLokaal.gebouw}`
-                  : lokalen.length === 0 ? 'Er zijn nog geen lokalen.' : 'Kies een lokaal om actief te maken.'}
-              </p>
+              {lokalen.length === 0 && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Er zijn nog geen lokalen.</p>}
             </>}
         </div>
       ),
