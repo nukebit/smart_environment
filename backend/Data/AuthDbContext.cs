@@ -15,10 +15,23 @@ public class AuthDbContext : IdentityDbContext<AppUser>
     public DbSet<Lokaal> Lokalen => Set<Lokaal>();
     public DbSet<Gebouw> Gebouwen => Set<Gebouw>();
     public DbSet<LokaalKeuze> LokaalKeuzes => Set<LokaalKeuze>();
+    public DbSet<Warnings.MeasurementLimit> MeasurementLimits => Set<Warnings.MeasurementLimit>();
+    public DbSet<Warnings.SensorWarning> SensorWarnings => Set<Warnings.SensorWarning>();
+    public DbSet<Warnings.WarningRead> WarningReads => Set<Warnings.WarningRead>();
+    public DbSet<Warnings.WarningMonitorStatus> WarningMonitorStatuses => Set<Warnings.WarningMonitorStatus>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.Entity<Warnings.MeasurementLimit>().HasData(
+            new Warnings.MeasurementLimit { Id = "temperature", Minimum = 19, Maximum = 23.5 },
+            new Warnings.MeasurementLimit { Id = "humidity", Minimum = 40, Maximum = 70 },
+            new Warnings.MeasurementLimit { Id = "pressure", Minimum = 1008, Maximum = 1028 });
+        builder.Entity<Warnings.WarningMonitorStatus>().HasData(new Warnings.WarningMonitorStatus { Id = 1 });
+        builder.Entity<Warnings.SensorWarning>().HasIndex(w => new { w.LokaalId, w.Kind }).IsUnique().HasFilter("IsOpen = 1");
+        builder.Entity<Warnings.WarningRead>().HasKey(r => new { r.WarningId, r.UserId });
+        builder.Entity<Warnings.WarningRead>().HasOne<Warnings.SensorWarning>().WithMany().HasForeignKey(r => r.WarningId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<Warnings.WarningRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
 
         var gebouw = builder.Entity<Gebouw>();
         gebouw.Property(item => item.Naam).UseCollation("NOCASE");
