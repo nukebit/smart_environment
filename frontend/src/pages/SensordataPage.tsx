@@ -1,3 +1,5 @@
+import MeasurementLimits from '../components/MeasurementLimits';
+import { api, type MeasurementLimit } from '../lib/api';
 import { useEffect, useState, useMemo } from 'react';
 import {
   Download,
@@ -74,6 +76,14 @@ function formatDagDatumKort(d: Date): string {
 }
 
 export default function SensordataPage() {
+  const [limits, setLimits] = useState<MeasurementLimit[]>([]);
+  const [limitsError, setLimitsError] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    api<MeasurementLimit[]>('/api/measurement-limits', 'GET', undefined, controller.signal)
+      .then(setLimits).catch(e => { if (!controller.signal.aborted) setLimitsError(e.message); });
+    return () => controller.abort();
+  }, []);
   const [role, setRole] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode();
   const [lokalen, setLokalen] = useState<Lokaal[]>([]);
@@ -189,8 +199,12 @@ export default function SensordataPage() {
   };
 
   const huidigeSensor = useMemo(() => {
-    return sensorTypen.find(s => s.id === geselecteerdSensortype) || sensorTypen[0];
-  }, [geselecteerdSensortype]);
+    const sensor = sensorTypen.find(s => s.id === geselecteerdSensortype) || sensorTypen[0];
+    const metric = ({ temperatuur: 'temperature', luchtvochtigheid: 'humidity', luchtdruk: 'pressure' } as Record<string, string>)[sensor.id];
+    const limit = limits.find(item => item.id === metric);
+    return { ...sensor, optimaalMin: limit?.minimum ?? sensor.optimaalMin,
+      optimaalMax: limit?.maximum ?? sensor.optimaalMax, defaultGrens: limit?.maximum ?? sensor.defaultGrens };
+  }, [geselecteerdSensortype, limits]);
 
   const periodes = useMemo(() => {
     const now = new Date();
@@ -230,7 +244,9 @@ export default function SensordataPage() {
   // Pas standaardweergave aan per sensor
   useEffect(() => {
     setWeergaveModus(huidigeSensor.standaardWeergave);
-  }, [huidigeSensor]);
+  }, [geselecteerdSensortype]);
+
+  useEffect(() => { setHoveredPoint(null); }, [limits]);
 
   const resetFilters = () => {
     setGeselecteerdGebouw(standaardLokaal?.gebouw ?? '');
@@ -264,7 +280,7 @@ export default function SensordataPage() {
     const seed = norm % 10;
 
     const classify = (val: number) => {
-      const isExceeded = val >= huidigeSensor.defaultGrens;
+      const isExceeded = val > huidigeSensor.defaultGrens;
       const isTooLow = val < huidigeSensor.optimaalMin;
       const status: 'te-hoog' | 'te-laag' | 'optimaal' = isExceeded
         ? 'te-hoog'
@@ -276,7 +292,7 @@ export default function SensordataPage() {
         ? 'Boven alarmgrens'
         : isTooLow
           ? `Onder de ondergrens (${huidigeSensor.id === 'temperatuur' ? 'te koel' : huidigeSensor.id === 'luchtvochtigheid' ? 'te droog' : 'lage druk'})`
-          : 'Binnen optimaal bereik';
+          : 'Binnen ingestelde grenzen';
 
       return {
         status,
@@ -533,7 +549,7 @@ export default function SensordataPage() {
 
   // CSV export
   const handleExportCsv = () => {
-    const headers = ['Gebouw', 'Lokaal', 'Sensortype', 'Periode', 'Tijd_Datum', 'Waarde', 'Eenheid', 'Alarmgrens', 'Status'];
+    const headers = ['Gebouw', 'Lokaal', 'Sensortype', 'Periode', 'Tijd_Datum', 'Waarde', 'Eenheid', 'Ondergrens', 'Bovengrens', 'Status'];
     const rows = meetData.map(d => [
       geselecteerdGebouw,
       geselecteerdLokaal,
@@ -542,6 +558,7 @@ export default function SensordataPage() {
       d.datum,
       d.waarde.toString().replace('.', ','),
       huidigeSensor.eenheid,
+      huidigeSensor.optimaalMin.toString().replace('.', ','),
       huidigeSensor.defaultGrens.toString().replace('.', ','),
       d.isOverschrijding ? 'Grensoverschrijding' : 'Normaal',
     ]);
@@ -562,16 +579,15 @@ export default function SensordataPage() {
     else if (page === 'Beheer') window.location.assign('/beheer');
   };
 
-  // Y-as bereik & schaling
+  // Preserve the normal axis range, expanding it for administrator-defined limits.
   const { yMin, yMax, ySteps } = useMemo(() => {
-    if (geselecteerdSensortype === 'temperatuur') {
-      return { yMin: 16, yMax: 26, ySteps: [16, 18, 20, 22, 24, 26] };
-    }
-    if (geselecteerdSensortype === 'luchtvochtigheid') {
-      return { yMin: 30, yMax: 80, ySteps: [30, 40, 50, 60, 70, 80] };
-    }
-    return { yMin: 1005, yMax: 1035, ySteps: [1005, 1010, 1015, 1020, 1025, 1030, 1035] };
-  }, [geselecteerdSensortype]);
+    const [baseMin, baseMax] = geselecteerdSensortype === 'temperatuur' ? [16, 26]
+      : geselecteerdSensortype === 'luchtvochtigheid' ? [30, 80] : [1005, 1035];
+    const margin = Math.max((huidigeSensor.defaultGrens - huidigeSensor.optimaalMin) * 0.1, 1);
+    const min = Math.min(baseMin, Math.floor(huidigeSensor.optimaalMin - margin));
+    const max = Math.max(baseMax, Math.ceil(huidigeSensor.defaultGrens + margin));
+    return { yMin: min, yMax: max, ySteps: Array.from({ length: 6 }, (_, i) => Math.round((min + (max - min) * i / 5) * 10) / 10) };
+  }, [geselecteerdSensortype, huidigeSensor]);
 
   const chartWidth = 800;
   const chartHeight = 280;
@@ -629,6 +645,7 @@ export default function SensordataPage() {
   const comfortBottomY = getYPos(huidigeSensor.optimaalMin);
 
   if (!role) return <main className="p-6"><p role="status">Sessie controleren…</p></main>;
+  if (!limits.length) return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white"><AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} /><main className="p-8"><p role={limitsError ? 'alert' : 'status'}>{limitsError || 'Grenswaarden laden…'}</p>{limitsError && <button onClick={() => window.location.reload()} className="mt-4 underline">Opnieuw laden</button>}</main></div>;
   if (lokalenLoading || lokalenError || lokalen.length === 0) {
     return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white">
       <AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -692,6 +709,8 @@ export default function SensordataPage() {
           </div>
         </section>
 
+        {role === 'Beheerder' && <MeasurementLimits limits={limits} canEdit onSaved={setLimits} />}
+        {limitsError && <p role="alert" className="mb-4 text-red-600">{limitsError}</p>}
         {/* HOOFDINDELING */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
 
@@ -811,17 +830,17 @@ export default function SensordataPage() {
                       <Info size={12} strokeWidth={2.5} />
                     </span>
                     <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
-                      Norm voor {huidigeSensor.naam}
+                      Grenswaarden voor {huidigeSensor.naam}
                     </span>
                   </div>
                   <span className="rounded-full bg-emerald-200/70 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-300">
-                    Richtlijn
+                    Ingesteld door beheerder
                   </span>
                 </div>
 
                 <div className="mt-3 space-y-2 text-xs">
                   <div className="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 dark:bg-slate-900/60">
-                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Optimaal bereik</span>
+                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Ingesteld bereik</span>
                     <span className="font-bold text-emerald-700 dark:text-emerald-400">
                       {huidigeSensor.optimaalMin} – {huidigeSensor.optimaalMax} {huidigeSensor.eenheid}
                     </span>
@@ -829,7 +848,7 @@ export default function SensordataPage() {
                   <div className="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 dark:bg-slate-900/60">
                     <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Alarmdrempel</span>
                     <span className="font-bold text-[#b45309] dark:text-amber-400">
-                      ≥ {huidigeSensor.defaultGrens} {huidigeSensor.eenheid}
+                      &gt; {huidigeSensor.defaultGrens} {huidigeSensor.eenheid}
                     </span>
                   </div>
                 </div>
