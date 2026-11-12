@@ -7,6 +7,12 @@ import {
   Settings,
   ArrowUpRight,
   ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  DoorOpen,
+  MapPin,
+  Check,
 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
 import WeatherValues, { weatherTime } from '../components/WeatherValues';
@@ -31,6 +37,11 @@ export default function DashboardPage() {
   const [darkMode, toggleDarkMode] = useDarkMode(); // Wordt onthouden tussen pagina's.
   const [activePage, setActivePage] = useState('Dashboard');
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
+  const [lokaalDropdownOpen, setLokaalDropdownOpen] = useState(false);
+  const [geselecteerdGebouwId, setGeselecteerdGebouwId] = useState<number | null>(null);
+  const [lokaalOpslaan, setLokaalOpslaan] = useState(false);
+  const [lokaalKeuzeError, setLokaalKeuzeError] = useState('');
+  const [voorkeurVersie, setVoorkeurVersie] = useState(0);
   const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
   const [voorkeur, setVoorkeur] = useState<DashboardVoorkeur>({
@@ -87,7 +98,7 @@ export default function DashboardPage() {
       controller?.abort();
       window.removeEventListener('pageshow', herlaadBijTerugkeer);
     };
-  }, [role]);
+  }, [role, voorkeurVersie]);
 
   useEffect(() => {
     if (!role) return;
@@ -176,9 +187,50 @@ export default function DashboardPage() {
 
   const isBeheerder = role === 'Beheerder';
 
+  // Haal de unieke gebouwen uit de lokalenlijst.
+  const gebouwen = Array.from(
+    new Map(
+      (lokalen ?? []).map(lokaal => [
+        lokaal.gebouwId,
+        { id: lokaal.gebouwId, naam: lokaal.gebouw }
+      ] as const)
+    ).values()
+  ).sort((a, b) => a.naam.localeCompare(b.naam, 'nl'));
+
+  // Toon alleen lokalen van het gekozen gebouw.
+  const gefilterdeLokalen = (lokalen ?? [])
+    .filter(lokaal => lokaal.gebouwId === geselecteerdGebouwId)
+    .sort((a, b) =>
+      a.naam.localeCompare(b.naam, 'nl', { numeric: true })
+    );
+
+  // Sla het gekozen lokaal op als voorkeurslokaal.
+  async function kiesLokaal(lokaal: Lokaal) {
+    if (lokaalOpslaan) return;
+
+    setLokaalOpslaan(true);
+    setLokaalKeuzeError('');
+
+    try {
+      await api<LokaalKeuze>(
+        '/api/lokalen/actief',
+        'PUT',
+        { lokaalId: lokaal.id }
+      );
+
+      setLokaalDropdownOpen(false);
+      setGeselecteerdGebouwId(null);
+      setVoorkeurVersie(v => v + 1);
+    } catch {
+      setLokaalKeuzeError('Lokaal selecteren mislukt.');
+    } finally {
+      setLokaalOpslaan(false);
+    }
+  }
+
   const kaarten = [
     {
-      titel: 'Sensordata & Historie',
+      titel: 'Sensordata',
       beschrijving: voorkeur.lokaal
         ? `Voorkeurslokaal ${voorkeur.lokaal.naam} · ${voorkeur.lokaal.gebouw}`
         : 'Bekijk klimaatmetingen per lokaal',
@@ -216,17 +268,151 @@ export default function DashboardPage() {
       titel: 'Lokalenoverzicht',
       beschrijving: isBeheerder ? 'Beheer gebouwen en lokalen' : 'Bekijk alle lokalen',
       detail: (
-        <div className="rounded-lg border-l-2 border-blue-600 bg-slate-50 p-3 dark:bg-slate-900/60 dark:text-slate-100">
-          {lokalenError ? <p role="alert" className="text-sm text-red-700 dark:text-red-400">{lokalenError}</p>
-            : lokalen === null ? <p role="status" className="text-sm text-slate-500 dark:text-slate-400">Lokalen laden…</p>
-            : <>
-              <p className="font-semibold">
-                {aantalGebouwen} {aantalGebouwen === 1 ? 'gebouw' : 'gebouwen'} · {lokalen.length} {lokalen.length === 1 ? 'lokaal' : 'lokalen'}
+      <div className="space-y-3 text-slate-900 dark:text-white">
+
+        {/* HUIDIG GESELECTEERD LOKAAL */}
+        <div className="rounded-lg border-l-2 border-blue-600 bg-slate-50 p-3 dark:bg-slate-900/60">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Huidig geselecteerd lokaal
+          </p>
+
+          {voorkeur.lokaal ? (
+            <>
+              <div className="mt-2 flex items-center gap-2 font-semibold">
+                <MapPin size={17} className="text-emerald-600" />
+                {voorkeur.lokaal.naam}
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {voorkeur.lokaal.gebouw}
               </p>
-              {lokalen.length === 0 && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Er zijn nog geen lokalen.</p>}
-            </>}
+            </>
+          ) : (
+            <p className="mt-2 text-sm">
+              Geen lokaal geselecteerd
+            </p>
+          )}
         </div>
-      ),
+
+        {/* KNOP OM DROPDOWN TE OPENEN */}
+        <button
+          type="button"
+          disabled={lokaalOpslaan || lokalen === null}
+          onClick={() => {
+            setLokaalDropdownOpen(!lokaalDropdownOpen);
+            setGeselecteerdGebouwId(null);
+          }}
+          aria-expanded={lokaalDropdownOpen}
+          className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm font-medium transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
+        >
+          <span className="flex items-center gap-2">
+            <DoorOpen size={17} />
+            Lokaal kiezen
+          </span>
+
+          <ChevronDown
+            size={17}
+            className={`transition-transform ${
+              lokaalDropdownOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+
+        {/* DROPDOWN MET GEBOUWEN EN LOKALEN */}
+        {lokaalDropdownOpen && (
+          <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-600 dark:bg-slate-800">
+
+            {geselecteerdGebouwId === null ? (
+              <>
+                <p className="px-2 py-2 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
+                  Selecteer een gebouw
+                </p>
+
+                {gebouwen.map(gebouw => (
+                  <button
+                    key={gebouw.id}
+                    type="button"
+                    onClick={() => setGeselecteerdGebouwId(gebouw.id)}
+                    className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-3 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Building2 size={17} />
+                      {gebouw.naam}
+                    </span>
+
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+
+                {gebouwen.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-slate-500">
+                    Geen gebouwen beschikbaar.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                {/* TERUG NAAR GEBOUWEN */}
+                <button
+                  type="button"
+                  onClick={() => setGeselecteerdGebouwId(null)}
+                  className="flex cursor-pointer items-center gap-2 px-2 py-2 text-sm font-semibold hover:text-emerald-600"
+                >
+                  <ChevronLeft size={17} />
+                  {gebouwen.find(g => g.id === geselecteerdGebouwId)?.naam}
+                </button>
+
+                <div className="my-2 border-t border-slate-200 dark:border-slate-600" />
+
+                {/* LOKALEN VAN HET GEKOZEN GEBOUW */}
+                {gefilterdeLokalen.map(lokaal => (
+                  <button
+                    key={lokaal.id}
+                    type="button"
+                    disabled={lokaalOpslaan}
+                    onClick={() => void kiesLokaal(lokaal)}
+                    className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-3 text-left text-sm hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+                  >
+                    <span className="flex items-center gap-2">
+                      <DoorOpen size={16} />
+                      {lokaal.naam}
+                    </span>
+
+                    {voorkeur.lokaal?.id === lokaal.id && (
+                      <Check size={17} className="text-emerald-600" />
+                    )}
+                  </button>
+                ))}
+
+                {gefilterdeLokalen.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-slate-500">
+                    Geen lokalen beschikbaar in dit gebouw.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {lokaalOpslaan && (
+          <p role="status" className="text-xs text-slate-500">
+            Lokaal opslaan…
+          </p>
+        )}
+
+        {lokaalKeuzeError && (
+          <p role="alert" className="text-xs text-red-600">
+            {lokaalKeuzeError}
+          </p>
+        )}
+
+        {lokalenError && (
+          <p role="alert" className="text-xs text-red-600">
+            {lokalenError}
+          </p>
+        )}
+      </div>
+    ),
       icon: Building2,
       kleur: 'blue',
       pagina: 'Lokalen',
