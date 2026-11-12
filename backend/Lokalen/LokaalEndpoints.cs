@@ -34,7 +34,7 @@ public static class LokaalEndpoints
         var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
         var lokaal = await database.LokaalKeuzes.AsNoTracking().Where(keuze => keuze.UserId == userId)
             .Select(keuze => new LokaalResponse(keuze.Lokaal.Id, keuze.Lokaal.Naam,
-                keuze.Lokaal.GebouwId, keuze.Lokaal.Gebouw.Naam))
+                keuze.Lokaal.GebouwId, keuze.Lokaal.Gebouw.Naam, keuze.Lokaal.TemperatureMinimum, keuze.Lokaal.TemperatureMaximum, keuze.Lokaal.HumidityMinimum, keuze.Lokaal.HumidityMaximum, keuze.Lokaal.PressureMinimum, keuze.Lokaal.PressureMaximum))
             .SingleOrDefaultAsync(cancellationToken);
         return Results.Ok(new { lokaal });
     }
@@ -90,10 +90,11 @@ public static class LokaalEndpoints
         if (gebouw is null) return ApiFilters.FieldError("gebouwId", "Selecteer een bestaand gebouw.");
 
         var lokaal = new Lokaal { Naam = request.Naam.Trim(), Gebouw = gebouw };
+        ApplyLimits(request, lokaal);
         database.Lokalen.Add(lokaal);
 
         var error = await SaveChanges(database, cancellationToken);
-        return error ?? Results.Created($"/api/lokalen/{lokaal.Id}", new LokaalResponse(lokaal.Id, lokaal.Naam, gebouw.Id, gebouw.Naam));
+        return error ?? Results.Created($"/api/lokalen/{lokaal.Id}", new LokaalResponse(lokaal.Id, lokaal.Naam, gebouw.Id, gebouw.Naam, lokaal.TemperatureMinimum, lokaal.TemperatureMaximum, lokaal.HumidityMinimum, lokaal.HumidityMaximum, lokaal.PressureMinimum, lokaal.PressureMaximum));
     }
 
     private static async Task<IResult> Update(int id, LokaalRequest request, AuthDbContext database, CancellationToken cancellationToken)
@@ -109,9 +110,10 @@ public static class LokaalEndpoints
 
         lokaal.Naam = request.Naam.Trim();
         lokaal.Gebouw = gebouw;
+        ApplyLimits(request, lokaal);
 
         var error = await SaveChanges(database, cancellationToken);
-        return error ?? Results.Ok(new LokaalResponse(lokaal.Id, lokaal.Naam, gebouw.Id, gebouw.Naam));
+        return error ?? Results.Ok(new LokaalResponse(lokaal.Id, lokaal.Naam, gebouw.Id, gebouw.Naam, lokaal.TemperatureMinimum, lokaal.TemperatureMaximum, lokaal.HumidityMinimum, lokaal.HumidityMaximum, lokaal.PressureMinimum, lokaal.PressureMaximum));
     }
 
     private static async Task<IResult> Delete(int id, AuthDbContext database, CancellationToken cancellationToken)
@@ -127,7 +129,17 @@ public static class LokaalEndpoints
     private static IQueryable<LokaalResponse> ToResponse(IQueryable<Lokaal> lokalen)
     {
         return lokalen.Select(lokaal =>
-            new LokaalResponse(lokaal.Id, lokaal.Naam, lokaal.GebouwId, lokaal.Gebouw.Naam));
+            new LokaalResponse(lokaal.Id, lokaal.Naam, lokaal.GebouwId, lokaal.Gebouw.Naam, lokaal.TemperatureMinimum, lokaal.TemperatureMaximum, lokaal.HumidityMinimum, lokaal.HumidityMaximum, lokaal.PressureMinimum, lokaal.PressureMaximum));
+    }
+
+    private static void ApplyLimits(LokaalRequest request, Lokaal lokaal)
+    {
+        lokaal.TemperatureMinimum = request.TemperatureMinimum!.Value;
+        lokaal.TemperatureMaximum = request.TemperatureMaximum!.Value;
+        lokaal.HumidityMinimum = request.HumidityMinimum!.Value;
+        lokaal.HumidityMaximum = request.HumidityMaximum!.Value;
+        lokaal.PressureMinimum = request.PressureMinimum!.Value;
+        lokaal.PressureMaximum = request.PressureMaximum!.Value;
     }
 
     private static async Task<IResult?> SaveChanges(AuthDbContext database, CancellationToken cancellationToken)

@@ -1,5 +1,3 @@
-import MeasurementLimits from '../components/MeasurementLimits';
-import { api, type MeasurementLimit } from '../lib/api';
 import { useEffect, useState, useMemo } from 'react';
 import {
   Download,
@@ -76,14 +74,6 @@ function formatDagDatumKort(d: Date): string {
 }
 
 export default function SensordataPage() {
-  const [limits, setLimits] = useState<MeasurementLimit[]>([]);
-  const [limitsError, setLimitsError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    api<MeasurementLimit[]>('/api/measurement-limits', 'GET', undefined, controller.signal)
-      .then(setLimits).catch(e => { if (!controller.signal.aborted) setLimitsError(e.message); });
-    return () => controller.abort();
-  }, []);
   const [role, setRole] = useState('');
   const [darkMode, toggleDarkMode] = useDarkMode();
   const [lokalen, setLokalen] = useState<Lokaal[]>([]);
@@ -201,10 +191,11 @@ export default function SensordataPage() {
   const huidigeSensor = useMemo(() => {
     const sensor = sensorTypen.find(s => s.id === geselecteerdSensortype) || sensorTypen[0];
     const metric = ({ temperatuur: 'temperature', luchtvochtigheid: 'humidity', luchtdruk: 'pressure' } as Record<string, string>)[sensor.id];
-    const limit = limits.find(item => item.id === metric);
+    const room = lokalen.find(l => l.gebouw === geselecteerdGebouw && l.naam === geselecteerdLokaal);
+    const limit = room ? { minimum: room[(metric + 'Minimum') as keyof Lokaal] as number, maximum: room[(metric + 'Maximum') as keyof Lokaal] as number } : undefined;
     return { ...sensor, optimaalMin: limit?.minimum ?? sensor.optimaalMin,
       optimaalMax: limit?.maximum ?? sensor.optimaalMax, defaultGrens: limit?.maximum ?? sensor.defaultGrens };
-  }, [geselecteerdSensortype, limits]);
+  }, [geselecteerdSensortype, lokalen, geselecteerdGebouw, geselecteerdLokaal]);
 
   const periodes = useMemo(() => {
     const now = new Date();
@@ -246,7 +237,7 @@ export default function SensordataPage() {
     setWeergaveModus(huidigeSensor.standaardWeergave);
   }, [geselecteerdSensortype]);
 
-  useEffect(() => { setHoveredPoint(null); }, [limits]);
+  useEffect(() => { setHoveredPoint(null); }, [huidigeSensor]);
 
   const resetFilters = () => {
     setGeselecteerdGebouw(standaardLokaal?.gebouw ?? '');
@@ -645,7 +636,6 @@ export default function SensordataPage() {
   const comfortBottomY = getYPos(huidigeSensor.optimaalMin);
 
   if (!role) return <main className="p-6"><p role="status">Sessie controleren…</p></main>;
-  if (!limits.length) return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white"><AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} /><main className="p-8"><p role={limitsError ? 'alert' : 'status'}>{limitsError || 'Grenswaarden laden…'}</p>{limitsError && <button onClick={() => window.location.reload()} className="mt-4 underline">Opnieuw laden</button>}</main></div>;
   if (lokalenLoading || lokalenError || lokalen.length === 0) {
     return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white">
       <AppHeader activePage="Sensordata" role={role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -709,8 +699,6 @@ export default function SensordataPage() {
           </div>
         </section>
 
-        {role === 'Beheerder' && <MeasurementLimits limits={limits} canEdit onSaved={setLimits} />}
-        {limitsError && <p role="alert" className="mb-4 text-red-600">{limitsError}</p>}
         {/* HOOFDINDELING */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
 
