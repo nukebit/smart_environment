@@ -1,3 +1,4 @@
+import { api } from '../lib/api';
 import { useEffect, useState } from 'react';
 import {
   Bell,
@@ -22,6 +23,8 @@ const sensorData = {
 };
 
 export default function DashboardPage() {
+  const [warningCounts, setWarningCounts] = useState<{ total: number; unread: number } | null>(null);
+  const [warningsError, setWarningsError] = useState('');
   const [email, setEmail] = useState('');
   const { weather, error: weatherError } = useWeather(Boolean(email));
   const [role, setRole] = useState('');
@@ -31,6 +34,21 @@ export default function DashboardPage() {
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
   const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
+
+  useEffect(() => {
+    if (!role) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try {
+        const response = await api<{ items: { isRead: boolean }[] }>('/api/warnings', 'GET', undefined, controller.signal);
+        if (!controller.signal.aborted) { setWarningCounts({ total: response.items.length, unread: response.items.filter(w => !w.isRead).length }); setWarningsError(''); }
+      } catch { if (!controller.signal.aborted) setWarningsError('Meldingen ophalen mislukt.'); }
+      finally { if (!controller.signal.aborted) timer = setTimeout(refresh, 30000); }
+    }
+    void refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [role]);
 
   // Controleer of de gebruiker is ingelogd.
   useEffect(() => {
@@ -156,10 +174,10 @@ export default function DashboardPage() {
       detail: (
         <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
           <p className="font-semibold">
-            2 actieve meldingen
+            {warningsError || (warningCounts ? `${warningCounts.unread} ongelezen meldingen` : 'Meldingen laden…')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            1 grenswaarde · 1 sensor offline
+            {warningCounts ? `${warningCounts.total} meldingen in totaal` : 'Bekijk de meldingen per lokaal'}
           </p>
         </div>
       ),
