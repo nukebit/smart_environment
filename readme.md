@@ -79,16 +79,16 @@ Log in met het account uit stap 2 (`example@test.com` / `password`).
 
 | Rol | Ziet | Mag |
 |---|---|---|
-| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts, gebouwen en lokalen beheren |
-| **Docent** | Dashboard en **Lokalen** | Alle lokalen bekijken |
+| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts, gebouwen en lokalen beheren en een voorkeurslokaal kiezen |
+| **Docent** | Dashboard en **Lokalen** | Alle lokalen bekijken en een voorkeurslokaal kiezen |
 
 Op **Beheer** (`/beheer`) maakt een beheerder accounts aan voor docenten.
 Het wachtwoord dat de beheerder invult, geeft hij persoonlijk door aan de docent.
 
 > De backend controleert de rol bij **elk** verzoek. Een docent die zelf `/api/users` aanroept, krijgt **403**.
 
+Kies op **Lokalen** met **Maak voorkeur** welk lokaal het dashboard gebruikt voor binnenmetingen. Deze keuze wordt per account opgeslagen.
 Op **Sensordata** kiest iedere gebruiker een lokaal via de filters. Bij het openen is het eerste beschikbare lokaal geselecteerd.
-Een docent heeft alleen leestoegang tot het lokalenoverzicht.
 
 ---
 
@@ -190,7 +190,7 @@ Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodi
 
 ### Lokaalbeheer – `backend/Lokalen/LokaalEndpoints.cs`
 
-Beheerders en docenten mogen lokalen bekijken. De routes onder `/api/lokalen/actief` zijn beschikbaar voor bestaande API-clients.
+Beheerders en docenten mogen lokalen bekijken en een eigen voorkeurslokaal kiezen.
 Alleen beheerders mogen lokaalgegevens toevoegen, wijzigen of verwijderen.
 POST, PUT en DELETE vereisen ook een CSRF-token.
 
@@ -198,8 +198,8 @@ POST, PUT en DELETE vereisen ook een CSRF-token.
 |---|---|---|---|
 | GET | `/api/lokalen` | Beheerder en Docent | Alle lokalen uit SQLite laden |
 | GET | `/api/lokalen/{id}` | Beheerder en Docent | Eén lokaal bekijken |
-| GET | `/api/lokalen/actief` | Beheerder en Docent | Eigen keuze ophalen als `{ lokaal }`, of `{ lokaal: null }` |
-| PUT | `/api/lokalen/actief` | Beheerder en Docent | Eigen keuze vervangen (`lokaalId`); de gebruiker komt uit de logincookie |
+| GET | `/api/lokalen/actief` | Beheerder en Docent | Voorkeurslokaal ophalen als `{ lokaal }` of `{ lokaal: null }` |
+| PUT | `/api/lokalen/actief` | Beheerder en Docent | Voorkeurslokaal vervangen (`lokaalId`) voor de ingelogde gebruiker |
 | POST | `/api/lokalen` | Beheerder | Lokaal toevoegen (`naam`, `gebouwId`) |
 | PUT | `/api/lokalen/{id}` | Beheerder | Lokaalgegevens wijzigen |
 | DELETE | `/api/lokalen/{id}` | Beheerder | Lokaal verwijderen |

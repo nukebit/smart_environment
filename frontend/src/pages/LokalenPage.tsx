@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Building2, Check, ChevronDown, ChevronLeft, ChevronRight, DoorOpen, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Building2, Check, ChevronDown, ChevronLeft, ChevronRight, DoorOpen, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
 import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
-import type { Gebouw, Lokaal } from '../types/lokalen';
+import { api } from '../lib/api';
+import type { Gebouw, Lokaal, LokaalKeuze } from '../types/lokalen';
 
 type CurrentUser = { role: string };
 
@@ -51,6 +52,7 @@ export default function LokalenPage() {
   const [me, setMe] = useState<CurrentUser | null>(null);
   const [lokalen, setLokalen] = useState<Lokaal[]>([]);
   const [gebouwen, setGebouwen] = useState<Gebouw[]>([]);
+  const [voorkeurslokaalId, setVoorkeurslokaalId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -106,15 +108,18 @@ export default function LokalenPage() {
     setLoading(true);
     setLoaded(false);
     try {
-      const [lokalenResponse, gebouwenResponse] = await Promise.all([
+      const [lokalenResponse, gebouwenResponse, keuze] = await Promise.all([
         fetch('/api/lokalen', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/gebouwen', { credentials: 'include', cache: 'no-store' }),
+        api<LokaalKeuze>('/api/lokalen/actief').catch(() => null),
       ]);
       if (!lokalenResponse.ok) throw new Error(await readError(lokalenResponse));
       if (!gebouwenResponse.ok) throw new Error(await readError(gebouwenResponse));
       setLokalen(await lokalenResponse.json());
       setGebouwen(await gebouwenResponse.json());
+      setVoorkeurslokaalId(keuze?.lokaal?.id ?? null);
       setLoaded(true);
+      if (!keuze) setPageError('Voorkeurslokaal laden mislukt.');
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'Lokalen laden mislukt. Controleer of de backend draait.');
     } finally {
@@ -215,10 +220,27 @@ export default function LokalenPage() {
       const response = await sendWithCsrf(`/api/lokalen/${teVerwijderen.id}`, 'DELETE');
       if (!response.ok) throw new Error(await readError(response));
       setLokalen(current => current.filter(lokaal => lokaal.id !== teVerwijderen.id));
+      setVoorkeurslokaalId(current => current === teVerwijderen.id ? null : current);
       setSuccess(`Lokaal ${teVerwijderen.naam} is verwijderd.`);
       setTeVerwijderen(null);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'Verwijderen mislukt. Probeer het opnieuw.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function maakVoorkeur(lokaal: Lokaal) {
+    if (busy || lokaal.id === voorkeurslokaalId) return;
+    setBusy(true);
+    setPageError('');
+    setSuccess('');
+    try {
+      const keuze = await api<{ lokaal: Lokaal }>('/api/lokalen/actief', 'PUT', { lokaalId: lokaal.id });
+      setVoorkeurslokaalId(keuze.lokaal.id);
+      setSuccess(`${keuze.lokaal.naam} in ${keuze.lokaal.gebouw} is je voorkeurslokaal voor het dashboard.`);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Voorkeurslokaal opslaan mislukt.');
     } finally {
       setBusy(false);
     }
@@ -557,13 +579,35 @@ export default function LokalenPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
-                        <tr><th scope="col" className="px-5 py-3 font-medium">Lokaal</th><th scope="col" className="px-5 py-3 font-medium">Gebouw</th>{isBeheerder && <th scope="col" className="px-5 py-3 text-right font-medium">Acties</th>}</tr>
+                        <tr>
+                          <th scope="col" className="px-5 py-3 font-medium">Lokaal</th>
+                          <th scope="col" className="px-5 py-3 font-medium">Gebouw</th>
+                          <th scope="col" className="px-5 py-3 font-medium">Dashboard</th>
+                          {isBeheerder && <th scope="col" className="px-5 py-3 text-right font-medium">Acties</th>}
+                        </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                         {zichtbareLokalen.map(lokaal => (
                           <tr key={lokaal.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
                             <th scope="row" className="px-5 py-4 font-semibold">{lokaal.naam}</th>
                             <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{lokaal.gebouw}</td>
+                            <td className="whitespace-nowrap px-5 py-4">
+                              {lokaal.id === voorkeurslokaalId ? (
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                  <Star size={15} fill="currentColor" aria-hidden="true" /> Voorkeur
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  aria-label={`Maak voorkeur voor ${lokaal.naam} in ${lokaal.gebouw}`}
+                                  onClick={() => maakVoorkeur(lokaal)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                                >
+                                  <Star size={15} aria-hidden="true" /> Maak voorkeur
+                                </button>
+                              )}
+                            </td>
                             {isBeheerder && (
                               <td className="px-5 py-4"><div className="flex justify-end gap-2">
                                 <button disabled={busy} onClick={() => openForm(lokaal)} aria-label={`Wijzig lokaal ${lokaal.naam}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"><Pencil size={17} aria-hidden="true" /></button>

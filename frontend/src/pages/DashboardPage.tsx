@@ -10,16 +10,15 @@ import {
 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
 import WeatherValues, { weatherTime } from '../components/WeatherValues';
-import { useWeather } from '../hooks/useWeather';
+import { useWeather, type WeatherReading } from '../hooks/useWeather';
 import { useDarkMode } from '../hooks/useDarkMode';
-import type { Lokaal } from '../types/lokalen';
+import type { Lokaal, LokaalKeuze } from '../types/lokalen';
 
-// Tijdelijke voorbeeldgegevens.
-// Later vervangen we deze door gegevens uit de backend.
-const sensorData = {
-  temperatuur: 24.8,
-  luchtvochtigheid: 48,
-  luchtdruk: 1013,
+type BinnenMeting = Pick<WeatherReading, 'temperature' | 'humidity' | 'pressure'> & { timestamp: string };
+type DashboardVoorkeur = {
+  lokaal: Lokaal | null;
+  meting: WeatherReading | null;
+  melding: string;
 };
 
 export default function DashboardPage() {
@@ -34,6 +33,61 @@ export default function DashboardPage() {
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
   const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
+  const [voorkeur, setVoorkeur] = useState<DashboardVoorkeur>({
+    lokaal: null, meting: null, melding: 'Voorkeurslokaal laden…',
+  });
+
+  useEffect(() => {
+    if (!role) return;
+    let controller: AbortController | undefined;
+
+    async function laadVoorkeur() {
+      controller?.abort();
+      controller = new AbortController();
+      const { signal } = controller;
+      let lokaal: Lokaal | null = null;
+
+      try {
+        const keuze = await api<LokaalKeuze>('/api/lokalen/actief', 'GET', undefined, signal);
+        if (signal.aborted) return;
+        lokaal = keuze.lokaal;
+        setVoorkeur({
+          lokaal, meting: null, melding: lokaal ? 'Binnenmetingen laden…' : 'Kies een voorkeurslokaal op Lokalen.',
+        });
+        if (!lokaal) return;
+
+        const naam = lokaal.naam.replace(/^Lokaal\s+/i, '');
+        const { latest } = await api<{ latest: BinnenMeting | null }>(
+          `/api/sensors/room-data?room=${encodeURIComponent(naam)}&limit=1`, 'GET', undefined, signal,
+        );
+        if (signal.aborted) return;
+
+        if (latest && [latest.temperature, latest.humidity, latest.pressure].every(Number.isFinite)) {
+          const { timestamp, ...waarden } = latest;
+          setVoorkeur({ lokaal, meting: { ...waarden, time: timestamp, windSpeed: 0 }, melding: '' });
+        } else {
+          setVoorkeur({ lokaal, meting: null, melding: 'Geen binnenmetingen beschikbaar.' });
+        }
+      } catch {
+        if (!signal.aborted) {
+          setVoorkeur({
+            lokaal, meting: null, melding: lokaal ? 'Binnenmetingen laden mislukt.' : 'Voorkeurslokaal laden mislukt.',
+          });
+        }
+      }
+    }
+
+    function herlaadBijTerugkeer(event: PageTransitionEvent) {
+      if (event.persisted) void laadVoorkeur();
+    }
+
+    void laadVoorkeur();
+    window.addEventListener('pageshow', herlaadBijTerugkeer);
+    return () => {
+      controller?.abort();
+      window.removeEventListener('pageshow', herlaadBijTerugkeer);
+    };
+  }, [role]);
 
   useEffect(() => {
     if (!role) return;
@@ -125,7 +179,9 @@ export default function DashboardPage() {
   const kaarten = [
     {
       titel: 'Sensordata & Historie',
-      beschrijving: 'Bekijk klimaatmetingen per lokaal',
+      beschrijving: voorkeur.lokaal
+        ? `Voorkeurslokaal ${voorkeur.lokaal.naam} · ${voorkeur.lokaal.gebouw}`
+        : 'Bekijk klimaatmetingen per lokaal',
       detail: (
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
@@ -137,7 +193,14 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
             <p className="w-11 shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-200">Binnen</p>
             <div className="min-w-0 flex-1 border-l border-slate-200 pl-2 dark:border-slate-600">
-              <WeatherValues weather={{ temperature: sensorData.temperatuur, humidity: sensorData.luchtvochtigheid, pressure: sensorData.luchtdruk, windSpeed: 0, time: '' }} />
+              {voorkeur.meting ? (
+                <>
+                  <WeatherValues weather={voorkeur.meting} />
+                  <time dateTime={voorkeur.meting.time} className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                    {new Date(voorkeur.meting.time).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', dateStyle: 'short', timeStyle: 'short' })}
+                  </time>
+                </>
+              ) : <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{voorkeur.melding}</p>}
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
