@@ -79,13 +79,16 @@ Log in met het account uit stap 2 (`example@test.com` / `password`).
 
 | Rol | Ziet | Mag |
 |---|---|---|
-| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts en lokalen beheren |
-| **Docent** | Dashboard | Gegevens bekijken, geen toegang tot Beheer |
+| **Beheerder** | Dashboard, **Beheer** en **Lokalen** | Accounts, gebouwen en lokalen beheren |
+| **Docent** | Dashboard en **Lokalen** | Alle lokalen bekijken |
 
 Op **Beheer** (`/beheer`) maakt een beheerder accounts aan voor docenten.
 Het wachtwoord dat de beheerder invult, geeft hij persoonlijk door aan de docent.
 
 > De backend controleert de rol bij **elk** verzoek. Een docent die zelf `/api/users` aanroept, krijgt **403**.
+
+Op **Sensordata** kiest iedere gebruiker een lokaal via de filters. Bij het openen is het eerste beschikbare lokaal geselecteerd.
+Een docent heeft alleen leestoegang tot het lokalenoverzicht.
 
 ---
 
@@ -140,9 +143,11 @@ Zet de nieuwe bestanden in `Migrations` mee in je commit.
 
 ## Lokalen beheren
 
-De pagina **Lokalen** (`/lokalen`) is beschikbaar voor beheerders.
-Je kunt het overzicht bekijken, een lokaal toevoegen, de gegevens wijzigen en een lokaal verwijderen.
-Een lokaal heeft een naam en een gebouw. Verwijderen vraagt om bevestiging.
+Beheerders en docenten kunnen het overzicht op **Lokalen** (`/lokalen`) bekijken.
+Een beheerder kan lokalen toevoegen, wijzigen en verwijderen. Een lokaal heeft een naam en een gebouw.
+Bij het verwijderen verschijnt een pop-up met de lokaal- en gebouwnaam. Het lokaal wordt pas na bevestiging verwijderd.
+Via **Gebouwen beheren** kunnen beheerders gebouwen zoeken, toevoegen, hernoemen en lege gebouwen verwijderen.
+**Bekijk lokalen** opent het lokalenoverzicht met een filter op dat gebouw en selecteert het gebouw bij het toevoegen van een lokaal.
 
 De lokalen staan in de tabel **`Lokalen`** in dezelfde **`backend/auth.db`** als de accounts.
 Bij het starten voert de backend de migration **`AddLokalen`** automatisch uit.
@@ -185,28 +190,36 @@ Verzoeken die iets veranderen (**POST, PUT, DELETE**) hebben een CSRF-token nodi
 
 ### Lokaalbeheer – `backend/Lokalen/LokaalEndpoints.cs`
 
-Alle routes vereisen de rol **Beheerder**. POST, PUT en DELETE vereisen ook een CSRF-token.
+Beheerders en docenten mogen lokalen bekijken. De routes onder `/api/lokalen/actief` zijn beschikbaar voor bestaande API-clients.
+Alleen beheerders mogen lokaalgegevens toevoegen, wijzigen of verwijderen.
+POST, PUT en DELETE vereisen ook een CSRF-token.
 
-| Method | Route | Doel |
-|---|---|---|
-| GET | `/api/lokalen` | Lokalen uit SQLite laden |
-| GET | `/api/lokalen/{id}` | Eén lokaal bekijken |
-| POST | `/api/lokalen` | Lokaal toevoegen (`naam`, `gebouwId`) |
-| PUT | `/api/lokalen/{id}` | Lokaalgegevens wijzigen |
-| DELETE | `/api/lokalen/{id}` | Lokaal verwijderen |
+| Method | Route | Toegang | Doel |
+|---|---|---|---|
+| GET | `/api/lokalen` | Beheerder en Docent | Alle lokalen uit SQLite laden |
+| GET | `/api/lokalen/{id}` | Beheerder en Docent | Eén lokaal bekijken |
+| GET | `/api/lokalen/actief` | Beheerder en Docent | Eigen keuze ophalen als `{ lokaal }`, of `{ lokaal: null }` |
+| PUT | `/api/lokalen/actief` | Beheerder en Docent | Eigen keuze vervangen (`lokaalId`); de gebruiker komt uit de logincookie |
+| POST | `/api/lokalen` | Beheerder | Lokaal toevoegen (`naam`, `gebouwId`) |
+| PUT | `/api/lokalen/{id}` | Beheerder | Lokaalgegevens wijzigen |
+| DELETE | `/api/lokalen/{id}` | Beheerder | Lokaal verwijderen |
 
 Een lokaalnaam is uniek binnen een gebouw (hoofdletters maken geen verschil).
 Dubbele invoer geeft **409**; ongeldige invoer geeft **400**.
 De antwoorden bevatten `id`, `naam`, `gebouwId` en de gebouwnaam in `gebouw`.
+Als een beheerder een lokaal verwijdert, vervalt ook de persoonlijke keuze voor dat lokaal.
 
 ### Gebouwen – `backend/Gebouwen/GebouwEndpoints.cs`
 
 | Method | Route | Toegang | Doel |
 |---|---|---|---|
-| GET | `/api/gebouwen` | Beheerder | Gebouwen voor de keuzelijst ophalen |
+| GET | `/api/gebouwen` | Beheerder en Docent | Gebouwen voor het lokalenoverzicht ophalen |
 | POST | `/api/gebouwen` | Beheerder + CSRF | Gebouw toevoegen (`naam`) |
+| PUT | `/api/gebouwen/{id}` | Beheerder + CSRF | Gebouwnaam wijzigen (`naam`) |
+| DELETE | `/api/gebouwen/{id}` | Beheerder + CSRF | Een leeg gebouw verwijderen |
 
 Een gebouwnaam is verplicht, maximaal 100 tekens en uniek (hoofdletters maken geen verschil).
+Een gebouw met lokalen verwijderen geeft **409**: verplaats of verwijder eerst de bijbehorende lokalen.
 
 Statuscodes: **401** = niet ingelogd · **403** = geen rechten · **400** = ongeldige invoer of CSRF-token.
 
