@@ -15,7 +15,10 @@ const sorteerOpties = {
 };
 type Sortering = keyof typeof sorteerOpties;
 
-const leegFormulier = { naam: '', gebouwId: '' };
+const grensvelden = [
+  ['temperature', 'Temperatuur', '°C'], ['humidity', 'Luchtvochtigheid', '%'], ['pressure', 'Luchtdruk', 'hPa'],
+] as const;
+const leegFormulier = { naam: '', gebouwId: '', temperatureMinimum: '19', temperatureMaximum: '23.5', humidityMinimum: '40', humidityMaximum: '70', pressureMinimum: '1008', pressureMaximum: '1028' };
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-slate-600 dark:bg-slate-900';
 const primaryClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryClass = 'rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700';
@@ -122,11 +125,31 @@ export default function LokalenPage() {
     }
   }
 
-  function openForm(lokaal: Lokaal | null) {
-    if (!isBeheerder) return;
+  async function openForm(lokaal: Lokaal | null) {
+    if (!isBeheerder || busy) return;
+    setPageError('');
+    if (lokaal) {
+      setBusy(true);
+      try {
+        const response = await fetch('/api/lokalen/' + lokaal.id, { credentials: 'include', cache: 'no-store' });
+        if (!response.ok) throw new Error(await readError(response));
+        const saved: Lokaal = await response.json();
+        for (const [metric] of grensvelden) {
+          for (const bound of ['Minimum', 'Maximum'] as const) {
+            if (!Number.isFinite(saved[(metric + bound) as keyof Lokaal]))
+              throw new Error('De opgeslagen grenswaarden ontbreken. Herstart de bijgewerkte backend en vernieuw de pagina.');
+          }
+        }
+        lokaal = saved;
+        setLokalen(current => current.map(item => item.id === saved.id ? saved : item));
+      } catch (error) {
+        setPageError(error instanceof Error ? error.message : 'Grenswaarden ophalen mislukt.');
+        return;
+      } finally { setBusy(false); }
+    }
     setEditing(lokaal);
     const standaardGebouw = gefilterdGebouw ?? (gebouwen.length === 1 ? gebouwen[0] : undefined);
-    setForm(lokaal ? { naam: lokaal.naam, gebouwId: String(lokaal.gebouwId) }
+    setForm(lokaal ? { naam: lokaal.naam, gebouwId: String(lokaal.gebouwId), temperatureMinimum: String(lokaal.temperatureMinimum), temperatureMaximum: String(lokaal.temperatureMaximum), humidityMinimum: String(lokaal.humidityMinimum), humidityMaximum: String(lokaal.humidityMaximum), pressureMinimum: String(lokaal.pressureMinimum), pressureMaximum: String(lokaal.pressureMaximum) }
       : { ...leegFormulier, gebouwId: standaardGebouw ? String(standaardGebouw.id) : '' });
     setFormError('');
     setSuccess('');
@@ -189,9 +212,34 @@ export default function LokalenPage() {
       setFormError('De lokaalnaam mag maximaal 100 tekens bevatten.');
       return;
     }
+    for (const [metric, label] of grensvelden) {
+      const minimum = form[`${metric}Minimum`];
+      const maximum = form[`${metric}Maximum`];
+      const low = Number(minimum), high = Number(maximum);
+      if (!minimum.trim() || !maximum.trim() || !Number.isFinite(low) || !Number.isFinite(high)) {
+        setFormError(label + ': vul een geldig getal in voor beide grenzen.');
+        return;
+      }
+      if (low >= high) {
+        setFormError(label + ': de ondergrens moet lager zijn dan de bovengrens.');
+        return;
+      }
+      if (metric === 'humidity' && (low < 0 || high > 100)) {
+        setFormError('Luchtvochtigheid: beide grenzen moeten tussen 0 en 100% liggen.');
+        return;
+      }
+      if (metric === 'pressure' && low <= 0) {
+        setFormError('Luchtdruk: beide grenzen moeten groter zijn dan 0 hPa.');
+        return;
+      }
+      if (metric === 'temperature' && low < -273.15) {
+        setFormError('Temperatuur: grenzen mogen niet lager zijn dan −273,15°C.');
+        return;
+      }
+    }
     setBusy(true);
     try {
-      const response = await sendWithCsrf(editing ? `/api/lokalen/${editing.id}` : '/api/lokalen', editing ? 'PUT' : 'POST', { naam, gebouwId });
+      const response = await sendWithCsrf(editing ? `/api/lokalen/${editing.id}` : '/api/lokalen', editing ? 'PUT' : 'POST', { naam, gebouwId, temperatureMinimum: Number(form.temperatureMinimum), temperatureMaximum: Number(form.temperatureMaximum), humidityMinimum: Number(form.humidityMinimum), humidityMaximum: Number(form.humidityMaximum), pressureMinimum: Number(form.pressureMinimum), pressureMaximum: Number(form.pressureMaximum) });
       if (!response.ok) throw new Error(await readError(response));
       const lokaal: Lokaal = await response.json();
       setLokalen(current => editing
@@ -432,8 +480,8 @@ export default function LokalenPage() {
             )}
 
             {isBeheerder && formOpen && (
-              <FormDialog title={editing ? 'Lokaal wijzigen' : 'Lokaal toevoegen'} titleId="lokaal-heading" busy={busy} onClose={() => setFormOpen(false)}>
-                <form onSubmit={saveLokaal}>
+              <FormDialog wide title={editing ? 'Lokaal wijzigen' : 'Lokaal toevoegen'} titleId="lokaal-heading" busy={busy} onClose={() => setFormOpen(false)}>
+                <form noValidate onSubmit={saveLokaal}>
                   <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label htmlFor="lokaal-naam" className="mb-1.5 block text-sm font-medium">Lokaalnaam</label>
@@ -448,6 +496,26 @@ export default function LokalenPage() {
                         </select>
                         <ChevronDown size={18} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
                       </div>
+                    </div>
+                  </fieldset>
+                  <fieldset disabled={busy} className="mt-6" dir="ltr">
+                    <legend className="text-base font-semibold">Grenswaarden voor dit lokaal</legend>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{editing ? 'De opgeslagen grenswaarden van dit lokaal zijn hieronder ingevuld. Pas alleen aan wat je wilt wijzigen.' : 'Standaardwaarden zijn alvast ingevuld. Je kunt ze voor dit nieuwe lokaal aanpassen.'}</p>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                      {grensvelden.map(([metric, label, unit]) => <div key={metric} className="rounded-xl border border-slate-200 p-3 dark:border-slate-600">
+                        <h3 className="mb-3 text-sm font-semibold">{label} ({unit})</h3>
+                        {(['Minimum', 'Maximum'] as const).map(bound => {
+                          const field = `${metric}${bound}` as keyof typeof form;
+                          return <label key={bound} className="mb-3 block text-sm last:mb-0">
+                            <span className="mb-1 block">{bound === 'Minimum' ? 'Ondergrens' : 'Bovengrens'}</span>
+                            <input type="number" step="any" required value={form[field]}
+                              min={metric === 'humidity' || metric === 'pressure' ? 0 : -273.15}
+                              max={metric === 'humidity' ? 100 : undefined}
+                              onChange={event => setForm({ ...form, [field]: event.target.value })}
+                              className={inputClass} />
+                          </label>;
+                        })}
+                      </div>)}
                     </div>
                   </fieldset>
                   {formError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{formError}</p>}
