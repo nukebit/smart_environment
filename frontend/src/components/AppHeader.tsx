@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Leaf, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
 
 // De navigatiebalk bovenaan elke pagina na het inloggen (dashboard en beheer).
@@ -21,6 +21,31 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [headerVisible, setHeaderVisible] = useState(true);
+const lastScrollY = useRef(0);
+
+useEffect(() => {
+  lastScrollY.current = window.scrollY;
+
+  function handleScroll() {
+    const currentScrollY = window.scrollY;
+    const difference = currentScrollY - lastScrollY.current;
+
+    if (currentScrollY < 80) {
+      setHeaderVisible(true);
+    } else if (Math.abs(difference) > 3) {
+      setHeaderVisible(difference < 0);
+    }
+
+    lastScrollY.current = currentScrollY;
+  }
+
+  window.addEventListener('scroll', handleScroll, { passive: true });
+
+  return () => {
+    window.removeEventListener('scroll', handleScroll);
+  };
+}, []); 
 
   // Alle gebruikers zien lokalen; alleen beheerders zien accountbeheer.
   const zichtbareNavigatie = navigatie.filter(
@@ -91,7 +116,16 @@ export default function AppHeader({ activePage, role, darkMode = false, onToggle
   }
 
   return (
-    <header className={`border-b ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`}>
+    <header
+  className={`
+    sticky top-0 z-50
+    transition-transform duration-300 ease-in-out
+    ${headerVisible ? 'translate-y-0' : '-translate-y-full'}
+    ${darkMode
+      ? 'border-b border-slate-700 bg-slate-800'
+      : 'border-b border-slate-200 bg-white'
+    }
+  `}>
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-emerald-700 p-2 text-white">
