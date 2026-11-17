@@ -246,11 +246,29 @@ namespace SmartEnvironment.Api.Migrations
                     b.Property<int>("GebouwId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("HumidityMaximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HumidityMinimum")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("Naam")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT")
                         .UseCollation("NOCASE");
+
+                    b.Property<double>("PressureMaximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("PressureMinimum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TemperatureMaximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TemperatureMinimum")
+                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 

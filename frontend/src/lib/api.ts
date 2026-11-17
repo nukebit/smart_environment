@@ -15,4 +15,3 @@ export async function api<T>(url: string, method = 'GET', body?: unknown, signal
   }
   return response.status === 204 ? undefined as T : response.json();
 }
-export type MeasurementLimit = { id: string; minimum: number; maximum: number };

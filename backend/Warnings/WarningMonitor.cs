@@ -23,7 +23,6 @@ public class WarningMonitor(IServiceScopeFactory scopes, ILogger<WarningMonitor>
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var source = scope.ServiceProvider.GetRequiredService<IWarningMeasurementSource>();
         var rooms = await db.Lokalen.Include(l => l.Gebouw).ToListAsync(ct);
-        var limits = await db.MeasurementLimits.AsNoTracking().ToListAsync(ct);
         var open = await db.SensorWarnings.Where(w => w.IsOpen).ToListAsync(ct);
         var status = await db.WarningMonitorStatuses.SingleAsync(ct);
         var readings = await source.ReadAsync(rooms, ct);
@@ -42,6 +41,11 @@ public class WarningMonitor(IServiceScopeFactory scopes, ILogger<WarningMonitor>
             // Transport errors are not evidence that a device is offline or recovered.
             if (measurement is null) { failed = true; continue; }
             var now = DateTime.UtcNow;
+            MeasurementLimit[] limits = [
+                new() { Id = "temperature", Minimum = room.TemperatureMinimum, Maximum = room.TemperatureMaximum },
+                new() { Id = "humidity", Minimum = room.HumidityMinimum, Maximum = room.HumidityMaximum },
+                new() { Id = "pressure", Minimum = room.PressureMinimum, Maximum = room.PressureMaximum }
+            ];
             var conditions = WarningEvaluator.Evaluate(measurement, limits, now);
             foreach (var previous in roomOpen)
             {

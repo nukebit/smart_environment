@@ -39,27 +39,5 @@ public static class WarningEndpoints
             return Results.NoContent();
         }).AddEndpointFilter(ApiFilters.CsrfFilter);
 
-        var limits = app.MapGroup("/api/measurement-limits").RequireAuthorization()
-            .DisableCookieRedirect().AddEndpointFilter(ApiFilters.NoCacheFilter);
-        limits.MapGet("/", async (AuthDbContext db) => Results.Ok(await db.MeasurementLimits.AsNoTracking().OrderBy(l => l.Id).ToListAsync()));
-        limits.MapPut("/", async (MeasurementLimit[] request, AuthDbContext db) =>
-        {
-            string[] ids = ["temperature", "humidity", "pressure"];
-            if (request.Length != 3 || request.Any(l => l is null) || !request.Select(l => l.Id).Order().SequenceEqual(ids.Order()) ||
-                request.Any(l => !double.IsFinite(l.Minimum) || !double.IsFinite(l.Maximum) || l.Minimum >= l.Maximum ||
-                    (l.Id == "temperature" && l.Minimum < -273.15) ||
-                    (l.Id == "humidity" && (l.Minimum < 0 || l.Maximum > 100)) ||
-                    (l.Id == "pressure" && l.Minimum <= 0)))
-                return Results.BadRequest(new { message = "Vul voor alle drie metingen geldige grenzen in. De ondergrens moet lager zijn dan de bovengrens; vochtigheid: 0–100%, druk: groter dan 0." });
-            var saved = await db.MeasurementLimits.ToListAsync();
-            foreach (var limit in saved)
-            {
-                var input = request.Single(l => l.Id == limit.Id);
-                limit.Minimum = input.Minimum;
-                limit.Maximum = input.Maximum;
-            }
-            await db.SaveChangesAsync();
-            return Results.Ok(saved);
-        }).RequireAuthorization(p => p.RequireRole(Roles.Beheerder)).AddEndpointFilter(ApiFilters.CsrfFilter);
     }
 }
