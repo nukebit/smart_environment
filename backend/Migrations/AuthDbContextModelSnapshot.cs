@@ -246,11 +246,29 @@ namespace SmartEnvironment.Api.Migrations
                     b.Property<int>("GebouwId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("HumidityMaximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HumidityMinimum")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("Naam")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT")
                         .UseCollation("NOCASE");
+
+                    b.Property<double>("PressureMaximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("PressureMinimum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TemperatureMaximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TemperatureMinimum")
+                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 
@@ -258,6 +276,161 @@ namespace SmartEnvironment.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Lokalen");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Data.LokaalKeuze", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LokaalId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("LokaalId");
+
+                    b.ToTable("LokaalKeuzes");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Warnings.MeasurementLimit", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Maximum")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("Minimum")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MeasurementLimits");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = "temperature",
+                            Maximum = 23.5,
+                            Minimum = 19.0
+                        },
+                        new
+                        {
+                            Id = "humidity",
+                            Maximum = 70.0,
+                            Minimum = 40.0
+                        },
+                        new
+                        {
+                            Id = "pressure",
+                            Maximum = 1028.0,
+                            Minimum = 1008.0
+                        });
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Warnings.SensorWarning", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Advice")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Building")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Confirmed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Limit")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("LokaalId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("MeasuredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Room")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Value")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LokaalId", "Kind")
+                        .IsUnique()
+                        .HasFilter("IsOpen = 1");
+
+                    b.ToTable("SensorWarnings");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Warnings.WarningMonitorStatus", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("WarningMonitorStatuses");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1
+                        });
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Warnings.WarningRead", b =>
+                {
+                    b.Property<int>("WarningId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ReadAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("WarningId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("WarningReads");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -320,6 +493,40 @@ namespace SmartEnvironment.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Gebouw");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Data.LokaalKeuze", b =>
+                {
+                    b.HasOne("SmartEnvironment.Api.Data.Lokaal", "Lokaal")
+                        .WithMany()
+                        .HasForeignKey("LokaalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartEnvironment.Api.Data.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Lokaal");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SmartEnvironment.Api.Warnings.WarningRead", b =>
+                {
+                    b.HasOne("SmartEnvironment.Api.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartEnvironment.Api.Warnings.SensorWarning", null)
+                        .WithMany()
+                        .HasForeignKey("WarningId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

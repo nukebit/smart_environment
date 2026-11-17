@@ -1,3 +1,4 @@
+import { api } from '../lib/api';
 import { useEffect, useState } from 'react';
 import {
   Bell,
@@ -11,19 +12,19 @@ import AppHeader from '../components/AppHeader';
 import WeatherValues, { weatherTime } from '../components/WeatherValues';
 import { useWeather } from '../hooks/useWeather';
 import { useDarkMode } from '../hooks/useDarkMode';
+import type { Lokaal } from '../types/lokalen';
 
 // Tijdelijke voorbeeldgegevens.
 // Later vervangen we deze door gegevens uit de backend.
 const sensorData = {
-  lokaal: '2.14',
   temperatuur: 24.8,
   luchtvochtigheid: 48,
   luchtdruk: 1013,
 };
 
-type Lokaal = { id: number; naam: string; gebouw: string };
-
 export default function DashboardPage() {
+  const [warningCounts, setWarningCounts] = useState<{ total: number; unread: number } | null>(null);
+  const [warningsError, setWarningsError] = useState('');
   const [email, setEmail] = useState('');
   const { weather, error: weatherError } = useWeather(Boolean(email));
   const [role, setRole] = useState('');
@@ -33,6 +34,21 @@ export default function DashboardPage() {
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
   const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
+
+  useEffect(() => {
+    if (!role) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try {
+        const response = await api<{ items: { isRead: boolean }[] }>('/api/warnings', 'GET', undefined, controller.signal);
+        if (!controller.signal.aborted) { setWarningCounts({ total: response.items.length, unread: response.items.filter(w => !w.isRead).length }); setWarningsError(''); }
+      } catch { if (!controller.signal.aborted) setWarningsError('Meldingen ophalen mislukt.'); }
+      finally { if (!controller.signal.aborted) timer = setTimeout(refresh, 30000); }
+    }
+    void refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [role]);
 
   // Controleer of de gebruiker is ingelogd.
   useEffect(() => {
@@ -59,7 +75,7 @@ export default function DashboardPage() {
 
   // De lokalenkaart gebruikt hetzelfde overzicht als de lokalenpagina.
   useEffect(() => {
-    if (role !== 'Beheerder') return;
+    if (!role) return;
     const controller = new AbortController();
 
     Promise.all([
@@ -109,7 +125,7 @@ export default function DashboardPage() {
   const kaarten = [
     {
       titel: 'Sensordata & Historie',
-      beschrijving: `Voorbeeldmetingen uit Lokaal ${sensorData.lokaal}`,
+      beschrijving: 'Bekijk klimaatmetingen per lokaal',
       detail: (
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
@@ -135,7 +151,7 @@ export default function DashboardPage() {
     },
     {
       titel: 'Lokalenoverzicht',
-      beschrijving: 'Bekijk en beheer de lokalen',
+      beschrijving: isBeheerder ? 'Beheer gebouwen en lokalen' : 'Bekijk alle lokalen',
       detail: (
         <div className="rounded-lg border-l-2 border-blue-600 bg-slate-50 p-3 dark:bg-slate-900/60 dark:text-slate-100">
           {lokalenError ? <p role="alert" className="text-sm text-red-700 dark:text-red-400">{lokalenError}</p>
@@ -144,10 +160,7 @@ export default function DashboardPage() {
               <p className="font-semibold">
                 {aantalGebouwen} {aantalGebouwen === 1 ? 'gebouw' : 'gebouwen'} · {lokalen.length} {lokalen.length === 1 ? 'lokaal' : 'lokalen'}
               </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {lokalen.length === 0 ? 'Voeg je eerste lokaal toe.'
-                  : `${lokalen.slice(0, 3).map(lokaal => lokaal.naam).join(' · ')}${lokalen.length > 3 ? ` · en ${lokalen.length - 3} meer` : ''}`}
-              </p>
+              {lokalen.length === 0 && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Er zijn nog geen lokalen.</p>}
             </>}
         </div>
       ),
@@ -161,10 +174,10 @@ export default function DashboardPage() {
       detail: (
         <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
           <p className="font-semibold">
-            2 actieve meldingen
+            {warningsError || (warningCounts ? `${warningCounts.unread} ongelezen meldingen` : 'Meldingen laden…')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            1 grenswaarde · 1 sensor offline
+            {warningCounts ? `${warningCounts.total} meldingen in totaal` : 'Bekijk de meldingen per lokaal'}
           </p>
         </div>
       ),
@@ -193,9 +206,9 @@ export default function DashboardPage() {
     },
   ];
 
-  // Beheer en lokaalbeheer zijn alleen zichtbaar voor beheerders.
+  // Accountbeheer is alleen zichtbaar voor beheerders; het lokalenoverzicht is voor iedereen.
   const zichtbareKaarten = kaarten.filter(
-    kaart => isBeheerder || !['Beheer', 'Lokalen'].includes(kaart.pagina)
+    kaart => isBeheerder || kaart.pagina !== 'Beheer'
   );
 
   const iconKleuren: Record<string, string> = {
@@ -315,7 +328,7 @@ export default function DashboardPage() {
                     onClick={() => handleNavigation(kaart.pagina)}
                     className="mt-auto flex cursor-pointer items-center gap-2 self-start text-sm font-semibold text-emerald-700 hover:underline"
                   >
-                    {kaart.pagina === 'Lokalen' ? 'Lokalen beheren' : 'Bekijk'} <ArrowRight size={16} />
+                    {kaart.pagina === 'Lokalen' ? (isBeheerder ? 'Lokalen beheren' : 'Lokalen bekijken') : 'Bekijk'} <ArrowRight size={16} />
                   </button>
                 </article>
               );
