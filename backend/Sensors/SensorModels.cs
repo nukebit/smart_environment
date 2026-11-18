@@ -61,3 +61,16 @@ public class UrbanSenseTelemetryResponse
     [JsonPropertyName("measurements")]
     public List<UrbanSenseMeasurement> Measurements { get; set; } = [];
 }
+
+/// <summary>
+/// Opgeslagen historische sensormeting in SQLite zodat 24u, 7d, 30d en 3m echte data tonen.
+/// </summary>
+public class SensorReading
+{
+    public int Id { get; set; }
+    public string DeviceId { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+    public double? Temperature { get; set; }
+    public double? Humidity { get; set; }
+    public double? Pressure { get; set; }
+}
