@@ -8,23 +8,15 @@ public static class DevelopmentData
     {
         var gebouwen = await database.Gebouwen.ToListAsync();
         var lokalen = await database.Lokalen.ToListAsync();
-        string[] oudeNamen = ["1.02", "2.14", "3.05"];
-
         var isLeeg = gebouwen.Count == 0 && lokalen.Count == 0;
-        var heeftOudeStartgegevens = gebouwen.Count == 1
-            && gebouwen[0].Naam == "Voorbeeldgebouw"
-            && lokalen.Count == 3
-            && lokalen.All(lokaal => lokaal.GebouwId == gebouwen[0].Id && oudeNamen.Contains(lokaal.Naam));
 
-        // Vul alleen een lege omgeving of de oorspronkelijke drie voorbeeldlokalen aan.
+        // Vul alleen een lege omgeving aan met de 3 pilotlokalen (1 per fysieke Urban Sense sensor).
         // Zo blijven eigen wijzigingen en verwijderde lokalen na een herstart behouden.
-        if (!isLeeg && !heeftOudeStartgegevens) return;
+        if (!isLeeg) return;
 
         (string Naam, string[] Lokalen)[] voorbeelden =
         [
-            ("Voorbeeldgebouw", ["1.01", "1.02", "1.03", "1.04", "2.01", "2.02", "2.14", "3.01", "3.02", "3.05"]),
-            ("Gebouw B", ["B.01", "B.02", "B.03", "B.04", "B.05", "B.06"]),
-            ("Gebouw C", ["C.01", "C.02", "C.03", "C.04"])
+            ("Voorbeeldgebouw", ["1.02", "2.14", "3.05"])
         ];
 
         foreach (var voorbeeld in voorbeelden)
