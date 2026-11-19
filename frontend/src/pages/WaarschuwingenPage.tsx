@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown } from 'lucide-react';
+import { Bell, ChevronDown, Trash2 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { api } from '../lib/api';
@@ -9,13 +9,55 @@ type Warning = { id: number; lokaalId: number; room: string; building: string; t
 type WarningResponse = { items: Warning[]; lastSuccessAt: string | null; error: string | null };
 const time = (value: string) => new Date(value.endsWith('Z') ? value : value + 'Z').toLocaleString('nl-NL');
 
+// Kleur per soort melding: te hoog = rood, te laag = blauw, overig (sensorproblemen) = amber.
+const tone = (kind: string) => {
+  if (kind.startsWith('temperature')) return 'temperature';
+  if (kind.startsWith('humidity')) return 'humidity';
+  if (kind.startsWith('pressure')) return 'pressure';
+  return 'other';
+};
+
+// Categorie van een melding, afgeleid van de soort: 'temperature-high' wordt 'temperature'.
+const category = (kind: string) => kind.split('-')[0];
+
+const toneStyles = {
+  temperature: {
+    label: 'Temperatuur',
+    border: 'border-l-red-600 dark:border-l-red-400',
+    unread: 'bg-red-50 dark:bg-red-950/40',
+    dot: 'bg-red-600 dark:bg-red-400',
+    badge: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
+  },
+  humidity: {
+    label: 'Luchtvochtigheid',
+    border: 'border-l-blue-600 dark:border-l-blue-400',
+    unread: 'bg-blue-50 dark:bg-blue-950/40',
+    dot: 'bg-blue-600 dark:bg-blue-400',
+    badge: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
+  },
+  pressure: {
+    label: 'Luchtdruk',
+    border: 'border-l-green-600 dark:border-l-green-400',
+    unread: 'bg-green-50 dark:bg-green-950/40',
+    dot: 'bg-green-600 dark:bg-green-400',
+    badge: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200',
+  },
+  other: {
+    label: 'Sensor',
+    border: 'border-l-amber-500 dark:border-l-amber-400',
+    unread: 'bg-amber-50 dark:bg-amber-950/40',
+    dot: 'bg-amber-500 dark:bg-amber-400',
+    badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+  },
+} as const;
+
 export default function WaarschuwingenPage() {
   const [user, setUser] = useState<{ role: string } | null>(null);
   const [data, setData] = useState<WarningResponse | null>(null);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [room, setRoom] = useState('');
-  const [tab, setTab] = useState<'all' | 'unread' | 'read'>('all');
+  const [tab, setTab] = useState<'all' | 'temperature' | 'humidity' | 'pressure'>('all');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const revision = useRef(0);
@@ -51,10 +93,23 @@ export default function WaarschuwingenPage() {
     } catch (e) { setActionError((e as Error).message); }
     finally { revision.current++; mutating.current = false; setBusy(null); }
   }
+  // Alleen een beheerder mag een gelezen melding definitief verwijderen (ook uit de database).
+  async function remove(warning: Warning) {
+    if (mutating.current || !warning.isRead) return;
+    if (!window.confirm(`Melding "${warning.title}" (${warning.room}) definitief verwijderen?`)) return;
+    mutating.current = true; revision.current++; setBusy(warning.id); setActionError('');
+    try {
+      await api(`/api/warnings/${warning.id}`, 'DELETE', undefined);
+      setData(previous => previous && { ...previous, items: previous.items.filter(w => w.id !== warning.id) });
+      setExpanded(current => (current === warning.id ? null : current));
+    } catch (e) { setActionError((e as Error).message); }
+    finally { revision.current++; mutating.current = false; setBusy(null); }
+  }
+  const isBeheerder = user?.role === 'Beheerder';
   const items = data?.items ?? [];
   const rooms = [...new Map(items.map(w => [w.lokaalId, `${w.building} · ${w.room}`])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const inRoom = items.filter(w => !room || String(w.lokaalId) === room);
-  const visible = inRoom.filter(w => tab === 'all' || w.id === expanded || (tab === 'read' ? w.isRead : !w.isRead));
+  const visible = inRoom.filter(w => tab === 'all' || category(w.kind) === tab);
   if (!user) return <main className="p-6"><p role={error ? 'alert' : 'status'}>{error || 'Sessie controleren…'}</p></main>;
   return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
     <AppHeader activePage="Waarschuwingen" role={user.role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -63,8 +118,11 @@ export default function WaarschuwingenPage() {
       <h1 className="text-3xl font-semibold">Waarschuwingen</h1>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Bekijk afwijkingen en advies per lokaal. Open een melding om deze als gelezen te markeren.</p>
       <div className="my-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap gap-2" aria-label="Leesstatus">{([
-          ['all', 'Alle', inRoom.length], ['unread', 'Ongelezen', inRoom.filter(w => !w.isRead).length], ['read', 'Gelezen', inRoom.filter(w => w.isRead).length]
+        <div className="flex flex-wrap gap-2" aria-label="Categorie">{([
+          ['all', 'Alle', inRoom.length],
+          ['temperature', 'Temperatuur', inRoom.filter(w => category(w.kind) === 'temperature').length],
+          ['humidity', 'Luchtvochtigheid', inRoom.filter(w => category(w.kind) === 'humidity').length],
+          ['pressure', 'Luchtdruk', inRoom.filter(w => category(w.kind) === 'pressure').length],
         ] as const).map(([id, label, count]) => <button key={id} aria-pressed={tab === id} onClick={() => { setTab(id); setExpanded(null); }}
           className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === id ? 'bg-brand text-white' : 'border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'}`}>{label} ({count})</button>)}</div>
         <label className="text-sm font-semibold">Lokaal
@@ -77,22 +135,43 @@ export default function WaarschuwingenPage() {
       <section aria-label="Meldingen" className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         {!data ? <p role="status" className="p-8">{error ? 'Meldingen zijn nog niet beschikbaar. We proberen het opnieuw.' : 'Meldingen laden…'}</p>
           : !visible.length ? <div className="p-10 text-center"><Bell className="mx-auto mb-3 text-slate-400" /><p>{items.length ? 'Geen meldingen voor deze selectie.' : 'Nog geen meldingen.'}</p><p className="mt-2 text-sm text-slate-500">Nieuwe meldingen verschijnen hier zodra ze worden vastgesteld.</p></div>
-          : visible.map(w => <article key={w.id} className={`border-b border-slate-200 last:border-b-0 dark:border-slate-700 ${!w.isRead ? 'border-l-4 border-l-blue-600 bg-blue-50 text-slate-950 dark:border-l-blue-400 dark:bg-blue-950/40 dark:text-slate-50' : 'border-l-4 border-l-transparent bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400'}`}>
-            <button aria-label={`${w.title}, ${w.room}, ${w.isRead ? 'gelezen' : 'ongelezen'}`} disabled={busy !== null} aria-expanded={expanded === w.id} aria-controls={`warning-${w.id}`} onClick={() => {
-              if (expanded === w.id) setExpanded(null); else { setExpanded(w.id); void mark(w, true); }
-            }} className="flex w-full items-start gap-3 p-5 text-left hover:bg-slate-100/60 focus-visible:outline-2 focus-visible:outline-brand dark:hover:bg-slate-700/40">
-              <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${w.isRead ? 'bg-transparent' : 'bg-blue-600 dark:bg-blue-400'}`} />
-              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={w.isRead ? "font-medium" : "font-bold"}>{w.title}</h2></div>
-                <p className="mt-1 text-sm">{w.building} · {w.room}</p>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.value !== null && ` · ${w.value.toLocaleString('nl-NL')} ${w.unit}`}</p>
-                <p className="mt-2 text-sm"><strong>Advies:</strong> {w.advice}</p>
-              </div><ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />
-            </button>
-            {expanded === w.id && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
-              {w.limit !== null && <p>{w.kind.endsWith('-high') ? 'Bovengrens' : 'Ondergrens'} bij melding: {w.limit.toLocaleString('nl-NL')} {w.unit}</p>}
-              <p className="mt-1">Meettijdstip: {time(w.measuredAt)}</p>
-            </div>}
-          </article>)}
+          : visible.map(w => {
+            const t = toneStyles[tone(w.kind)];
+            return (
+              <article key={w.id} className={`border-b border-l-4 border-slate-200 last:border-b-0 dark:border-slate-700 ${t.border} ${
+                w.isRead
+                  ? 'bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400'
+                  : `${t.unread} text-slate-950 dark:text-slate-50`}`}>
+                <div className="flex items-start">
+                <button aria-label={`${w.title}, ${w.room}, ${w.isRead ? 'gelezen' : 'ongelezen'}`} disabled={busy !== null} aria-expanded={expanded === w.id} aria-controls={`warning-${w.id}`} onClick={() => {
+                  if (expanded === w.id) setExpanded(null); else { setExpanded(w.id); void mark(w, true); }
+                }} className="flex min-w-0 flex-1 items-start gap-3 p-5 text-left hover:bg-slate-100/60 focus-visible:outline-2 focus-visible:outline-brand dark:hover:bg-slate-700/40">
+                  <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${w.isRead ? 'bg-transparent' : t.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className={w.isRead ? 'font-medium' : 'font-bold'}>{w.title}</h2>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${t.badge}`}>{t.label}</span>
+                    </div>
+                    <p className="mt-1 text-sm">{w.building} · {w.room}</p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.value !== null && ` · ${w.value.toLocaleString('nl-NL')} ${w.unit}`}</p>
+                    <p className="mt-2 text-sm"><strong>Advies:</strong> {w.advice}</p>
+                  </div>
+                  <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />
+                </button>
+                {isBeheerder && w.isRead && (
+                  <button type="button" aria-label={`Verwijder melding ${w.title}, ${w.room}`} title="Verwijderen" disabled={busy !== null} onClick={() => void remove(w)}
+                    className="m-4 shrink-0 rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-400">
+                    <Trash2 size={18} />
+                  </button>
+                )}
+                </div>
+                {expanded === w.id && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
+                  {w.limit !== null && <p>{w.kind.endsWith('-high') ? 'Bovengrens' : 'Ondergrens'} bij melding: {w.limit.toLocaleString('nl-NL')} {w.unit}</p>}
+                  <p className="mt-1">Meettijdstip: {time(w.measuredAt)}</p>
+                </div>}
+              </article>
+            );
+          })}
       </section>
       <p role="status" className="mt-4 text-xs text-slate-500 dark:text-slate-400">{data?.lastSuccessAt ? `Laatste geslaagde sensorcontrole: ${time(data.lastSuccessAt)}. ` : 'Nog geen geslaagde sensorcontrole. '}De lijst wordt elke 30 seconden opgehaald.</p>
     </main>
