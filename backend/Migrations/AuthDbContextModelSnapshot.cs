@@ -293,6 +293,36 @@ namespace SmartEnvironment.Api.Migrations
                     b.ToTable("LokaalKeuzes");
                 });
 
+            modelBuilder.Entity("SmartEnvironment.Api.Sensors.SensorReading", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeviceId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Humidity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("Pressure")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("Temperature")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "Timestamp")
+                        .IsUnique();
+
+                    b.ToTable("SensorReadings");
+                });
+
             modelBuilder.Entity("SmartEnvironment.Api.Warnings.MeasurementLimit", b =>
                 {
                     b.Property<string>("Id")

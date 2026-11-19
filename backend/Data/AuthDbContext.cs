@@ -19,6 +19,7 @@ public class AuthDbContext : IdentityDbContext<AppUser>
     public DbSet<Warnings.SensorWarning> SensorWarnings => Set<Warnings.SensorWarning>();
     public DbSet<Warnings.WarningRead> WarningReads => Set<Warnings.WarningRead>();
     public DbSet<Warnings.WarningMonitorStatus> WarningMonitorStatuses => Set<Warnings.WarningMonitorStatus>();
+    public DbSet<Sensors.SensorReading> SensorReadings => Set<Sensors.SensorReading>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -32,6 +33,7 @@ public class AuthDbContext : IdentityDbContext<AppUser>
         builder.Entity<Warnings.WarningRead>().HasKey(r => new { r.WarningId, r.UserId });
         builder.Entity<Warnings.WarningRead>().HasOne<Warnings.SensorWarning>().WithMany().HasForeignKey(r => r.WarningId).OnDelete(DeleteBehavior.Cascade);
         builder.Entity<Warnings.WarningRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<Sensors.SensorReading>().HasIndex(r => new { r.DeviceId, r.Timestamp }).IsUnique();
 
         var gebouw = builder.Entity<Gebouw>();
         gebouw.Property(item => item.Naam).UseCollation("NOCASE");

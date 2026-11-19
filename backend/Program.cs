@@ -20,6 +20,7 @@ builder.Services.AddHttpClient("OpenMeteo", client =>
 });
 builder.Services.AddSingleton<WeatherService>();
 builder.Services.AddHttpClient<UrbanSenseService>();
+builder.Services.AddHostedService<SensorHistorySyncService>();
 builder.Services.AddScoped<IWarningMeasurementSource, ExistingSensorWarningSource>();
 builder.Services.AddHostedService<WarningMonitor>();
 
