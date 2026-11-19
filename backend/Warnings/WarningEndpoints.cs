@@ -39,5 +39,20 @@ public static class WarningEndpoints
             return Results.NoContent();
         }).AddEndpointFilter(ApiFilters.CsrfFilter);
 
+        // Alleen een beheerder mag een melding verwijderen, en alleen een melding die hij zelf al heeft gelezen.
+        // De melding verdwijnt uit de database, inclusief de leesstatus van alle gebruikers.
+        group.MapDelete("/{id:int}", async (int id, AuthDbContext db, ClaimsPrincipal user) =>
+        {
+            if (!await db.SensorWarnings.AnyAsync(w => w.Id == id && w.Confirmed)) return Results.NotFound();
+            var userId = user.FindFirstValue(ClaimTypes.NameIdentifier)!;
+            if (!await db.WarningReads.AnyAsync(r => r.WarningId == id && r.UserId == userId)) return Results.Conflict();
+
+            await using var tx = await db.Database.BeginTransactionAsync();
+            await db.WarningReads.Where(r => r.WarningId == id).ExecuteDeleteAsync();
+            await db.SensorWarnings.Where(w => w.Id == id).ExecuteDeleteAsync();
+            await tx.CommitAsync();
+            return Results.NoContent();
+        }).RequireAuthorization(policy => policy.RequireRole("Beheerder"))
+          .AddEndpointFilter(ApiFilters.CsrfFilter);
     }
 }
