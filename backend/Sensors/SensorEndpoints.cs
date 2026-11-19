@@ -7,7 +7,7 @@ namespace SmartEnvironment.Api.Sensors;
 
 public static class SensorEndpoints
 {
-    private static readonly string[] AvailableDevices =
+    public static readonly string[] AvailableDevices =
     [
         "urban-sense-rijswijk-01",
         "urban-sense-rijswijk-02",
@@ -61,66 +61,73 @@ public static class SensorEndpoints
             return Results.Ok(result);
         });
 
-        // GET /api/sensors/room-data?room=2.14&limit=100 -> actuele én historische metingen voor een specifiek lokaal
+        // GET /api/sensors/room-data?room=2.14&period=24u -> actuele én opgeslagen historische metingen voor een specifiek lokaal
         group.MapGet("/room-data", async (
             [FromQuery] string room,
+            [FromQuery] string? period,
             [FromQuery] int? limit,
-            UrbanSenseService sensorService) =>
+            UrbanSenseService sensorService,
+            AuthDbContext database,
+            CancellationToken cancellationToken) =>
         {
             var deviceId = ResolveDeviceId(room);
-            var latest = await sensorService.GetLatestMeasurementAsync(deviceId);
-            var telemetry = await sensorService.GetTelemetryAsync(deviceId, limit ?? 100);
-
-            // Genereer een stabiele, realistische variatie per lokaal op basis van de echte API data
-            var hash = Math.Abs((room ?? string.Empty).GetHashCode());
-            var tempOffset = ((hash % 48) - 22) / 10.0; // bijv. -2.2°C tot +2.5°C
-            var humOffset = (hash % 19) - 8;            // bijv. -8% tot +10%
-            var pressOffset = (hash % 7) - 3;           // bijv. -3 hPa tot +3 hPa
-
-            // Fysieke sensor kalibratie: vang defecte hardwarewaarden (zoals 183°C bij rijswijk-02) netjes af
-            double SanitizeTemperature(double? raw) =>
-                (!raw.HasValue || double.IsNaN(raw.Value) || raw.Value > 45 || raw.Value < 5) ? 21.2 : raw.Value;
-
-            double SanitizeHumidity(double? raw) =>
-                (!raw.HasValue || double.IsNaN(raw.Value) || raw.Value > 95 || raw.Value < 20) ? 50.0 : raw.Value;
-
-            double SanitizePressure(double? raw) =>
-                (!raw.HasValue || double.IsNaN(raw.Value) || raw.Value > 1100 || raw.Value < 900) ? 1016.0 : raw.Value;
-
-            UrbanSenseMeasurement? calibratedLatest = null;
+            var latest = await sensorService.GetLatestMeasurementAsync(deviceId, cancellationToken);
             if (latest != null)
             {
-                calibratedLatest = new UrbanSenseMeasurement
-                {
-                    DeviceId = latest.DeviceId,
-                    DeviceName = $"{room} ({latest.DeviceName ?? deviceId})",
-                    Timestamp = latest.Timestamp,
-                    Temperature = Math.Round(SanitizeTemperature(latest.Temperature) + tempOffset, 1),
-                    Humidity = Math.Clamp(Math.Round(SanitizeHumidity(latest.Humidity) + humOffset, 1), 25, 85),
-                    Pressure = Math.Round(SanitizePressure(latest.Pressure) + pressOffset, 1)
-                };
+                await SensorHistorySyncService.SaveMeasurementsAsync(database, deviceId, [latest], cancellationToken);
             }
 
-            var calibratedTelemetry = telemetry.Select((m, index) =>
+            var nowUtc = DateTime.UtcNow;
+            var sinceUtc = (period ?? "24u").ToLowerInvariant() switch
             {
-                var wave = Math.Sin((index * 0.4) + (hash % 10)) * 0.4;
-                return new UrbanSenseMeasurement
+                "7d" => nowUtc.AddDays(-7),
+                "30d" => nowUtc.AddDays(-30),
+                "3m" => nowUtc.AddMonths(-3),
+                _ => nowUtc.AddHours(-24)
+            };
+
+            var stored = await database.SensorReadings
+                .AsNoTracking()
+                .Where(r => r.DeviceId == deviceId && r.Timestamp >= sinceUtc)
+                .OrderBy(r => r.Timestamp)
+                .ToListAsync(cancellationToken);
+
+            // Als de achtergrond-sync net gestart is en de DB nog leeg is voor dit device, haal dan direct de API-buffer op en sla die op
+            if (stored.Count == 0)
+            {
+                var apiTelemetry = await sensorService.GetTelemetryAsync(deviceId, limit ?? 500, cancellationToken);
+                if (apiTelemetry.Count > 0)
                 {
-                    DeviceId = m.DeviceId,
-                    DeviceName = $"{room} ({m.DeviceName ?? deviceId})",
-                    Timestamp = m.Timestamp,
-                    Temperature = Math.Round(SanitizeTemperature(m.Temperature) + tempOffset + wave, 1),
-                    Humidity = Math.Clamp(Math.Round(SanitizeHumidity(m.Humidity) + humOffset + (wave * -2), 1), 25, 85),
-                    Pressure = Math.Round(SanitizePressure(m.Pressure) + pressOffset, 1)
-                };
+                    await SensorHistorySyncService.SaveMeasurementsAsync(database, deviceId, apiTelemetry, cancellationToken);
+                    stored = await database.SensorReadings
+                        .AsNoTracking()
+                        .Where(r => r.DeviceId == deviceId && r.Timestamp >= sinceUtc)
+                        .OrderBy(r => r.Timestamp)
+                        .ToListAsync(cancellationToken);
+                }
+            }
+
+            var telemetry = stored.Select(r => new UrbanSenseMeasurement
+            {
+                DeviceId = r.DeviceId,
+                Timestamp = DateTime.SpecifyKind(r.Timestamp, DateTimeKind.Utc),
+                Temperature = r.Temperature,
+                Humidity = r.Humidity,
+                Pressure = r.Pressure
             }).ToList();
+
+            var lastMeasurementAt = latest?.Timestamp ?? telemetry.LastOrDefault()?.Timestamp;
+            var isOnline = lastMeasurementAt.HasValue
+                && (nowUtc - lastMeasurementAt.Value) <= TimeSpan.FromMinutes(5);
 
             return Results.Ok(new
             {
                 room,
                 deviceId,
-                latest = calibratedLatest,
-                telemetry = calibratedTelemetry
+                isOnline,
+                lastMeasurementAt,
+                latest,
+                telemetry
             });
         });
 
