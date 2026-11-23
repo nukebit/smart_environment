@@ -21,6 +21,18 @@ import { useDarkMode } from '../hooks/useDarkMode';
 import type { Lokaal, LokaalKeuze } from '../types/lokalen';
 
 type BinnenMeting = Pick<WeatherReading, 'temperature' | 'humidity' | 'pressure'> & { timestamp: string };
+type DashboardWarning = {
+  id: number;
+  lokaalId: number;
+  room: string;
+  building: string;
+  kind: string;
+  title: string;
+  advice: string;
+  measuredAt: string;
+  createdAt: string;
+  isRead: boolean;
+};
 type DashboardVoorkeur = {
   lokaal: Lokaal | null;
   meting: WeatherReading | null;
@@ -28,7 +40,7 @@ type DashboardVoorkeur = {
 };
 
 export default function DashboardPage() {
-  const [warningCounts, setWarningCounts] = useState<{ total: number; unread: number } | null>(null);
+  const [warnings, setWarnings] = useState<DashboardWarning[] | null>(null);
   const [warningsError, setWarningsError] = useState('');
   const [email, setEmail] = useState('');
   const { weather, error: weatherError } = useWeather(Boolean(email));
@@ -155,21 +167,43 @@ export default function DashboardPage() {
   return () => controller.abort();
   }, [role, geselecteerdLokaal]);
 
+  // Haal waarschuwingen op en vernieuw ze iedere 30 seconden.
   useEffect(() => {
-    if (!role) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
+  if (!role) return;
 
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
 
-    async function refresh() {
-      try {
-        const response = await api<{ items: { isRead: boolean }[] }>('/api/warnings', 'GET', undefined, controller.signal);
-        if (!controller.signal.aborted) { setWarningCounts({ total: response.items.length, unread: response.items.filter(w => !w.isRead).length }); setWarningsError(''); }
-      } catch { if (!controller.signal.aborted) setWarningsError('Meldingen ophalen mislukt.'); }
-      finally { if (!controller.signal.aborted) timer = setTimeout(refresh, 30000); }
+  async function refresh() {
+    try {
+      const response = await api<{ items: DashboardWarning[] }>(
+        '/api/warnings',
+        'GET',
+        undefined,
+        controller.signal
+      );
+
+      if (!controller.signal.aborted) {
+        setWarnings(response.items);
+        setWarningsError('');
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setWarningsError('Waarschuwingen ophalen mislukt.');
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        timer = setTimeout(refresh, 30000);
+      }
     }
-    void refresh();
-    return () => { controller.abort(); clearTimeout(timer); };
+  }
+
+  void refresh();
+
+  return () => {
+    controller.abort();
+    clearTimeout(timer);
+  };
   }, [role]);
 
   // Controleer of de gebruiker is ingelogd.
@@ -270,6 +304,14 @@ export default function DashboardPage() {
 
   // Gebruik de tijdelijke selectie, anders het opgeslagen voorkeurslokaal.
   const actiefLokaal = geselecteerdLokaal ?? voorkeur.lokaal;
+
+  // Toon maximaal 3 nieuwste waarschuwingen van het actieve lokaal.
+  const lokaalWaarschuwingen = (warnings ?? [])
+  .filter(warning => warning.lokaalId === actiefLokaal?.id)
+  .sort((a, b) =>
+    new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime()
+  )
+  .slice(0, 3);
 
   // Toon de metingen van de tijdelijke selectie, anders die van de voorkeur.
   const getoondeMeting = geselecteerdLokaal
@@ -471,14 +513,57 @@ export default function DashboardPage() {
       titel: 'Waarschuwingen',
       beschrijving: 'Meldingen die aandacht vereisen',
       detail: (
-        <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
-          <p className="font-semibold">
-            {warningsError || (warningCounts ? `${warningCounts.unread} ongelezen meldingen` : 'Meldingen laden…')}
+      <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
+
+        {warningsError ? (
+          <p className="text-xs text-red-600">{warningsError}</p>
+        ) : warnings === null || !actiefLokaal ? (
+          <p className="text-xs text-slate-500">
+            {warnings === null ? 'Waarschuwingen laden…' : 'Geen lokaal geselecteerd.'}
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {warningCounts ? `${warningCounts.total} meldingen in totaal` : 'Bekijk de meldingen per lokaal'}
+        ) : lokaalWaarschuwingen.length === 0 ? (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Geen waarschuwingen voor dit lokaal.
           </p>
-        </div>
+        ) : (
+          <div className="divide-y divide-slate-200 dark:divide-slate-700">
+            {lokaalWaarschuwingen.map(warning => (
+              <div key={warning.id} className="py-2 first:pt-0 last:pb-0">
+
+                {/* Titel en meettijd */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-xs font-semibold">
+                    {warning.title}
+                  </p>
+
+                  <time
+                    dateTime={warning.measuredAt}
+                    className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400"
+                  >
+                    {new Date(warning.measuredAt).toLocaleTimeString('nl-NL', {
+                      timeZone: 'Europe/Amsterdam',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </time>
+                </div>
+
+                {/* Gebouw, lokaal en advies naast elkaar */}
+                <div className="mt-1 flex items-center gap-2 text-[11px]">
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                    {warning.building} · {warning.room}
+                  </span>
+
+                  <span className="min-w-0 truncate" title={warning.advice}>
+                    <span className="font-semibold">Advies:</span> {warning.advice}
+                  </span>
+                </div>
+
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       ),
 
       icon: Bell,
