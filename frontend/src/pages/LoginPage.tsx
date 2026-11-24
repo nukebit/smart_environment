@@ -104,13 +104,6 @@ export default function LoginPage() {
           >
             {busy ? 'Bezig met inloggen...' : 'Inloggen'}
           </button>
-
-          <a
-            href="/wachtwoord-vergeten"
-            className="block text-center text-sm font-semibold text-brand hover:underline"
-          >
-            Wachtwoord vergeten?
-          </a>
         </form>
 
         <p className="mt-6 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
