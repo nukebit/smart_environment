@@ -21,6 +21,18 @@ import { useDarkMode } from '../hooks/useDarkMode';
 import type { Lokaal, LokaalKeuze } from '../types/lokalen';
 
 type BinnenMeting = Pick<WeatherReading, 'temperature' | 'humidity' | 'pressure'> & { timestamp: string };
+type DashboardWarning = {
+  id: number;
+  lokaalId: number;
+  room: string;
+  building: string;
+  kind: string;
+  title: string;
+  advice: string;
+  measuredAt: string;
+  createdAt: string;
+  isRead: boolean;
+};
 type DashboardVoorkeur = {
   lokaal: Lokaal | null;
   meting: WeatherReading | null;
@@ -28,7 +40,7 @@ type DashboardVoorkeur = {
 };
 
 export default function DashboardPage() {
-  const [warningCounts, setWarningCounts] = useState<{ total: number; unread: number } | null>(null);
+  const [warnings, setWarnings] = useState<DashboardWarning[] | null>(null);
   const [warningsError, setWarningsError] = useState('');
   const [email, setEmail] = useState('');
   const { weather, error: weatherError } = useWeather(Boolean(email));
@@ -39,14 +51,21 @@ export default function DashboardPage() {
   const [lokalen, setLokalen] = useState<Lokaal[] | null>(null);
   const [lokaalDropdownOpen, setLokaalDropdownOpen] = useState(false);
   const [geselecteerdGebouwId, setGeselecteerdGebouwId] = useState<number | null>(null);
-  const [lokaalOpslaan, setLokaalOpslaan] = useState(false);
-  const [lokaalKeuzeError, setLokaalKeuzeError] = useState('');
-  const [voorkeurVersie, setVoorkeurVersie] = useState(0);
-  const [aantalGebouwen, setAantalGebouwen] = useState(0);
   const [lokalenError, setLokalenError] = useState('');
+  const [geselecteerdLokaal, setGeselecteerdLokaal] = useState<Lokaal | null>(() => {
+    try {
+      const opgeslagenLokaal = sessionStorage.getItem('dashboardGeselecteerdLokaal');
+      return opgeslagenLokaal ? JSON.parse(opgeslagenLokaal) as Lokaal : null;
+    } catch {
+      return null;
+    }
+  });
   const [voorkeur, setVoorkeur] = useState<DashboardVoorkeur>({
     lokaal: null, meting: null, melding: 'Voorkeurslokaal laden…',
   });
+  // Binnenmetingen van het lokaal dat op het dashboard wordt getoond.
+  const [binnenmeting, setBinnenmeting] = useState<WeatherReading | null>(null);
+  const [binnenmetingMelding, setBinnenmetingMelding] = useState('Binnenmetingen laden…');
 
   useEffect(() => {
     if (!role) return;
@@ -98,21 +117,93 @@ export default function DashboardPage() {
       controller?.abort();
       window.removeEventListener('pageshow', herlaadBijTerugkeer);
     };
-  }, [role, voorkeurVersie]);
+  }, [role]);
 
+  // Laad binnenmetingen van het geselecteerde lokaal.
   useEffect(() => {
-    if (!role) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    async function refresh() {
-      try {
-        const response = await api<{ items: { isRead: boolean }[] }>('/api/warnings', 'GET', undefined, controller.signal);
-        if (!controller.signal.aborted) { setWarningCounts({ total: response.items.length, unread: response.items.filter(w => !w.isRead).length }); setWarningsError(''); }
-      } catch { if (!controller.signal.aborted) setWarningsError('Meldingen ophalen mislukt.'); }
-      finally { if (!controller.signal.aborted) timer = setTimeout(refresh, 30000); }
+  if (!role || !geselecteerdLokaal) return;
+
+  const controller = new AbortController();
+
+  async function laadBinnenmetingen() {
+    setBinnenmeting(null);
+    setBinnenmetingMelding('Binnenmetingen laden…');
+
+    try {
+      const naam = geselecteerdLokaal!.naam.replace(/^Lokaal\s+/i, '');
+
+      const { latest } = await api<{ latest: BinnenMeting | null }>(
+        `/api/sensors/room-data?room=${encodeURIComponent(naam)}&limit=1`,
+        'GET',
+        undefined,
+        controller.signal
+      );
+
+      if (controller.signal.aborted) return;
+
+      if (latest && [latest.temperature, latest.humidity, latest.pressure].every(Number.isFinite)) {
+        const { timestamp, ...waarden } = latest;
+
+        setBinnenmeting({
+          ...waarden,
+          time: timestamp,
+          windSpeed: 0
+        });
+
+        setBinnenmetingMelding('');
+      } else {
+        setBinnenmetingMelding('Geen binnenmetingen beschikbaar.');
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setBinnenmeting(null);
+        setBinnenmetingMelding('Binnenmetingen laden mislukt.');
+      }
     }
-    void refresh();
-    return () => { controller.abort(); clearTimeout(timer); };
+  }
+
+  void laadBinnenmetingen();
+
+  return () => controller.abort();
+  }, [role, geselecteerdLokaal]);
+
+  // Haal waarschuwingen op en vernieuw ze iedere 30 seconden.
+  useEffect(() => {
+  if (!role) return;
+
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+
+  async function refresh() {
+    try {
+      const response = await api<{ items: DashboardWarning[] }>(
+        '/api/warnings',
+        'GET',
+        undefined,
+        controller.signal
+      );
+
+      if (!controller.signal.aborted) {
+        setWarnings(response.items);
+        setWarningsError('');
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setWarningsError('Waarschuwingen ophalen mislukt.');
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        timer = setTimeout(refresh, 30000);
+      }
+    }
+  }
+
+  void refresh();
+
+  return () => {
+    controller.abort();
+    clearTimeout(timer);
+  };
   }, [role]);
 
   // Controleer of de gebruiker is ingelogd.
@@ -153,8 +244,6 @@ export default function DashboardPage() {
           return;
         }
         if (!lokalenResponse.ok || !gebouwenResponse.ok) throw new Error();
-        const gebouwen = await gebouwenResponse.json();
-        setAantalGebouwen(gebouwen.length);
         setLokalen(await lokalenResponse.json());
       })
       .catch(() => {
@@ -204,36 +293,41 @@ export default function DashboardPage() {
       a.naam.localeCompare(b.naam, 'nl', { numeric: true })
     );
 
-  // Sla het gekozen lokaal op als voorkeurslokaal.
-  async function kiesLokaal(lokaal: Lokaal) {
-    if (lokaalOpslaan) return;
+  // Selecteer tijdelijk een lokaal zonder de voorkeur te wijzigen.
+    function kiesLokaal(lokaal: Lokaal) {
+    setGeselecteerdLokaal(lokaal);
+    sessionStorage.setItem('dashboardGeselecteerdLokaal', JSON.stringify(lokaal));
 
-    setLokaalOpslaan(true);
-    setLokaalKeuzeError('');
-
-    try {
-      await api<LokaalKeuze>(
-        '/api/lokalen/actief',
-        'PUT',
-        { lokaalId: lokaal.id }
-      );
-
-      setLokaalDropdownOpen(false);
-      setGeselecteerdGebouwId(null);
-      setVoorkeurVersie(v => v + 1);
-    } catch {
-      setLokaalKeuzeError('Lokaal selecteren mislukt.');
-    } finally {
-      setLokaalOpslaan(false);
-    }
+    setLokaalDropdownOpen(false);
+    setGeselecteerdGebouwId(null);
   }
+
+  // Gebruik de tijdelijke selectie, anders het opgeslagen voorkeurslokaal.
+  const actiefLokaal = geselecteerdLokaal ?? voorkeur.lokaal;
+
+  // Toon maximaal 3 nieuwste waarschuwingen van het actieve lokaal.
+  const lokaalWaarschuwingen = (warnings ?? [])
+  .filter(warning => warning.lokaalId === actiefLokaal?.id)
+  .sort((a, b) =>
+    new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime()
+  )
+  .slice(0, 3);
+
+  // Toon de metingen van de tijdelijke selectie, anders die van de voorkeur.
+  const getoondeMeting = geselecteerdLokaal
+    ? binnenmeting
+    : voorkeur.meting;
+
+  const getoondeMelding = geselecteerdLokaal
+    ? binnenmetingMelding
+    : voorkeur.melding;
 
   const kaarten = [
     {
       titel: 'Sensordata',
-      beschrijving: voorkeur.lokaal
-        ? `Voorkeurslokaal ${voorkeur.lokaal.naam} · ${voorkeur.lokaal.gebouw}`
-        : 'Bekijk klimaatmetingen per lokaal',
+      beschrijving: actiefLokaal
+      ? `${geselecteerdLokaal ? 'Geselecteerd lokaal' : 'Voorkeurslokaal'} ${actiefLokaal.naam} · ${actiefLokaal.gebouw}`
+      : 'Bekijk klimaatmetingen per lokaal',
       detail: (
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
@@ -245,14 +339,25 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-900/40">
             <p className="w-11 shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-200">Binnen</p>
             <div className="min-w-0 flex-1 border-l border-slate-200 pl-2 dark:border-slate-600">
-              {voorkeur.meting ? (
-                <>
-                  <WeatherValues weather={voorkeur.meting} />
-                  <time dateTime={voorkeur.meting.time} className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                    {new Date(voorkeur.meting.time).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', dateStyle: 'short', timeStyle: 'short' })}
-                  </time>
-                </>
-              ) : <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{voorkeur.melding}</p>}
+              {getoondeMeting ? (
+                  <>
+                    <WeatherValues weather={getoondeMeting} />
+                    <time
+                      dateTime={getoondeMeting.time}
+                      className="mt-1 block text-xs text-slate-500 dark:text-slate-400"
+                    >
+                      {new Date(getoondeMeting.time).toLocaleString('nl-NL', {
+                        timeZone: 'Europe/Amsterdam',
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                      })}
+                    </time>
+                  </>
+                ) : (
+                  <p role="status" className="text-sm text-slate-500 dark:text-slate-400">
+                    {getoondeMelding}
+                  </p>
+              )}
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -276,15 +381,15 @@ export default function DashboardPage() {
             Huidig geselecteerd lokaal
           </p>
 
-          {voorkeur.lokaal ? (
+          {actiefLokaal ? (
             <>
               <div className="mt-2 flex items-center gap-2 font-semibold">
                 <MapPin size={17} className="text-emerald-600" />
-                {voorkeur.lokaal.naam}
+                {actiefLokaal.naam}
               </div>
 
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {voorkeur.lokaal.gebouw}
+                {actiefLokaal.gebouw}
               </p>
             </>
           ) : (
@@ -297,7 +402,7 @@ export default function DashboardPage() {
         {/* KNOP OM DROPDOWN TE OPENEN */}
         <button
           type="button"
-          disabled={lokaalOpslaan || lokalen === null}
+          disabled={lokalen === null}
           onClick={() => {
             setLokaalDropdownOpen(!lokaalDropdownOpen);
             setGeselecteerdGebouwId(null);
@@ -369,7 +474,6 @@ export default function DashboardPage() {
                   <button
                     key={lokaal.id}
                     type="button"
-                    disabled={lokaalOpslaan}
                     onClick={() => void kiesLokaal(lokaal)}
                     className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-3 text-left text-sm hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
                   >
@@ -378,7 +482,7 @@ export default function DashboardPage() {
                       {lokaal.naam}
                     </span>
 
-                    {voorkeur.lokaal?.id === lokaal.id && (
+                    {actiefLokaal?.id === lokaal.id && (
                       <Check size={17} className="text-emerald-600" />
                     )}
                   </button>
@@ -392,18 +496,6 @@ export default function DashboardPage() {
               </>
             )}
           </div>
-        )}
-
-        {lokaalOpslaan && (
-          <p role="status" className="text-xs text-slate-500">
-            Lokaal opslaan…
-          </p>
-        )}
-
-        {lokaalKeuzeError && (
-          <p role="alert" className="text-xs text-red-600">
-            {lokaalKeuzeError}
-          </p>
         )}
 
         {lokalenError && (
@@ -421,14 +513,57 @@ export default function DashboardPage() {
       titel: 'Waarschuwingen',
       beschrijving: 'Meldingen die aandacht vereisen',
       detail: (
-        <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
-          <p className="font-semibold">
-            {warningsError || (warningCounts ? `${warningCounts.unread} ongelezen meldingen` : 'Meldingen laden…')}
+      <div className="rounded-lg border-l-2 border-amber-500 bg-slate-50 p-3 text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">
+
+        {warningsError ? (
+          <p className="text-xs text-red-600">{warningsError}</p>
+        ) : warnings === null || !actiefLokaal ? (
+          <p className="text-xs text-slate-500">
+            {warnings === null ? 'Waarschuwingen laden…' : 'Geen lokaal geselecteerd.'}
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {warningCounts ? `${warningCounts.total} meldingen in totaal` : 'Bekijk de meldingen per lokaal'}
+        ) : lokaalWaarschuwingen.length === 0 ? (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Geen waarschuwingen voor dit lokaal.
           </p>
-        </div>
+        ) : (
+          <div className="divide-y divide-slate-200 dark:divide-slate-700">
+            {lokaalWaarschuwingen.map(warning => (
+              <div key={warning.id} className="py-2 first:pt-0 last:pb-0">
+
+                {/* Titel en meettijd */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-xs font-semibold">
+                    {warning.title}
+                  </p>
+
+                  <time
+                    dateTime={warning.measuredAt}
+                    className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400"
+                  >
+                    {new Date(warning.measuredAt).toLocaleTimeString('nl-NL', {
+                      timeZone: 'Europe/Amsterdam',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </time>
+                </div>
+
+                {/* Gebouw, lokaal en advies naast elkaar */}
+                <div className="mt-1 flex items-center gap-2 text-[11px]">
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                    {warning.building} · {warning.room}
+                  </span>
+
+                  <span className="min-w-0 truncate" title={warning.advice}>
+                    <span className="font-semibold">Advies:</span> {warning.advice}
+                  </span>
+                </div>
+
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       ),
 
       icon: Bell,
