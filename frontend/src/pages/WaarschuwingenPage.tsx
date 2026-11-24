@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, Trash2 } from 'lucide-react';
+import { Bell, ChevronDown, Download, Trash2 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
 import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
@@ -65,6 +65,11 @@ export default function WaarschuwingenPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [teVerwijderen, setTeVerwijderen] = useState<Warning | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportCount, setExportCount] = useState('100');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exporting = useRef(false);
   const revision = useRef(0);
   const mutating = useRef(false);
   const [darkMode, toggleDarkMode] = useDarkMode();
@@ -115,6 +120,23 @@ export default function WaarschuwingenPage() {
   const rooms = [...new Map(items.map(w => [w.lokaalId, `${w.building} · ${w.room}`])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const inRoom = items.filter(w => !room || String(w.lokaalId) === room);
   const visible = inRoom.filter(w => tab === 'all' || (tab === 'sensor' ? isSensorWarning(w.kind) : category(w.kind) === tab));
+  const count = Number(exportCount);
+  const validExportCount = Number.isInteger(count) && count >= 1 && count <= visible.length;
+  const exportCategory = { all: 'Alle', temperature: 'Temperatuur', humidity: 'Luchtvochtigheid', pressure: 'Luchtdruk', sensor: 'Sensor' }[tab];
+  const exportRoom = rooms.find(([id]) => String(id) === room)?.[1] ?? 'Alle lokalen';
+
+  async function downloadPdf() {
+    if (!validExportCount || exporting.current) return;
+    exporting.current = true; setExportBusy(true); setExportError('');
+    try {
+      const { createWarningsPdf } = await import('../lib/warningsPdf');
+      const pdf = createWarningsPdf(visible, count, exportCategory, exportRoom);
+      await pdf.save(`waarschuwingen-${new Date().toISOString().slice(0, 10)}.pdf`, { returnPromise: true });
+      setExportOpen(false);
+    } catch {
+      setExportError('PDF downloaden mislukt. Probeer het opnieuw.');
+    } finally { exporting.current = false; setExportBusy(false); }
+  }
   if (!user) return <main className="p-6"><p role={error ? 'alert' : 'status'}>{error || 'Sessie controleren…'}</p></main>;
   return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
     <AppHeader activePage="Waarschuwingen" role={user.role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -131,11 +153,21 @@ export default function WaarschuwingenPage() {
           ['sensor', 'Sensor', inRoom.filter(w => isSensorWarning(w.kind)).length],
         ] as const).map(([id, label, count]) => <button key={id} aria-pressed={tab === id} onClick={() => { setTab(id); setExpanded(null); }}
           className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === id ? 'bg-brand text-white' : 'border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'}`}>{label} ({count})</button>)}</div>
+        <div className="ml-auto flex flex-col items-end gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <span className="text-sm text-slate-500 dark:text-slate-400">{visible.length} meldingen</span>
+            <button type="button" aria-haspopup="dialog" disabled={!visible.length || busy !== null} onClick={() => {
+              setExportCount(String(Math.min(100, visible.length))); setExportError(''); setExportOpen(true);
+            }} className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <Download size={17} aria-hidden="true" /> PDF downloaden
+            </button>
+          </div>
         <label className="text-sm font-semibold">Lokaal
           <select value={room} onChange={e => { setRoom(e.target.value); setExpanded(null); }} className="ml-3 rounded-lg border border-slate-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
             <option value="">Alle lokalen</option>{rooms.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
+        </div>
       </div>
       {(error || actionError || data?.error) && <p role="alert" className="mb-4 rounded-lg border border-amber-400 p-3 text-sm">{actionError || error || data?.error}</p>}
       <section aria-label="Meldingen" className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
@@ -159,7 +191,7 @@ export default function WaarschuwingenPage() {
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${t.badge}`}>{t.label}</span>
                     </div>
                     <p className="mt-1 text-sm">{w.building} · {w.room}</p>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.value !== null && ` · ${w.value.toLocaleString('nl-NL')} ${w.unit}`}</p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.value !== null && ` · ${w.value.toLocaleString('nl-NL', { maximumSignificantDigits: 21 })} ${w.unit}`}</p>
                     <p className="mt-2 text-sm"><strong>Advies:</strong> {w.advice}</p>
                   </div>
                   <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />
@@ -173,13 +205,31 @@ export default function WaarschuwingenPage() {
                 </div>
                 {expanded === w.id && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
                   {w.limit !== null && <p>{w.kind.endsWith('-high') ? 'Bovengrens' : 'Ondergrens'} bij melding: {w.limit.toLocaleString('nl-NL')} {w.unit}</p>}
-                  <p className="mt-1">Meettijdstip: {time(w.measuredAt)}</p>
+                  <p className="mt-1">Laatst geregistreerde meting bij deze melding: {time(w.measuredAt)}</p>
                 </div>}
               </article>
             );
           })}
       </section>
       <p role="status" className="mt-4 text-xs text-slate-500 dark:text-slate-400">{data?.lastSuccessAt ? `Laatste geslaagde sensorcontrole: ${time(data.lastSuccessAt)}. ` : 'Nog geen geslaagde sensorcontrole. '}De lijst wordt elke 30 seconden opgehaald.</p>
+      {exportOpen && (
+        <FormDialog title="Waarschuwingen exporteren" titleId="export-heading" busy={exportBusy} onClose={() => setExportOpen(false)}>
+          <form onSubmit={event => { event.preventDefault(); void downloadPdf(); }}>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{exportCategory} · {exportRoom}</p>
+            <p id="export-count-help" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{visible.length} meldingen beschikbaar. De nieuwste meldingen worden eerst geëxporteerd.</p>
+            <label htmlFor="export-count" className="mt-5 block text-sm font-semibold">Aantal meldingen</label>
+            <input id="export-count" type="number" min={1} max={visible.length} step={1} required autoFocus disabled={exportBusy} value={exportCount}
+              onChange={event => setExportCount(event.target.value)} aria-invalid={!validExportCount} aria-describedby="export-count-help export-count-validation"
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+            <p id="export-count-validation" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{visible.length ? `Vul een geheel getal in van 1 tot en met ${visible.length}.` : 'Geen meldingen beschikbaar voor deze selectie.'}</p>
+            {exportError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{exportError}</p>}
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700">Annuleren</button>
+              <button type="submit" disabled={exportBusy || !validExportCount} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{exportBusy ? 'PDF maken…' : 'PDF downloaden'}</button>
+            </div>
+          </form>
+        </FormDialog>
+      )}
       {isBeheerder && teVerwijderen && (
         <FormDialog title="Melding verwijderen?" titleId="melding-verwijderen-heading" busy={busy !== null} onClose={() => setTeVerwijderen(null)}>
           <p className="text-sm text-slate-600 dark:text-slate-300">Weet je zeker dat je de melding "{teVerwijderen.title}" voor lokaal {teVerwijderen.room} in {teVerwijderen.building} definitief wilt verwijderen?</p>

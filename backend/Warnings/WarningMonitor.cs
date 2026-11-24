@@ -82,6 +82,12 @@ public class WarningMonitor(IServiceScopeFactory scopes, ILogger<WarningMonitor>
                     warning.Value = condition.Value;
                     warning.Limit = condition.Limit;
                 }
+                else if (measurement.Timestamp == warning.MeasuredAt && warning.Value is null
+                    && condition.Kind.EndsWith("-invalid") && condition.Value is not null)
+                {
+                    // Vul oude meldingen alleen aan met de exact bijbehorende meting.
+                    warning.Value = condition.Value;
+                }
             }
         }
         status.Error = failed ? "Sensordata konden niet volledig worden opgehaald. Bestaande meldingen blijven bewaard." : null;
