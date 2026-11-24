@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell, ChevronDown, Trash2 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
+import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { api } from '../lib/api';
 
@@ -63,6 +64,7 @@ export default function WaarschuwingenPage() {
   const [tab, setTab] = useState<'all' | 'temperature' | 'humidity' | 'pressure' | 'sensor'>('all');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [teVerwijderen, setTeVerwijderen] = useState<Warning | null>(null);
   const revision = useRef(0);
   const mutating = useRef(false);
   const [darkMode, toggleDarkMode] = useDarkMode();
@@ -98,13 +100,13 @@ export default function WaarschuwingenPage() {
   }
   // Alleen een beheerder mag een gelezen melding definitief verwijderen (ook uit de database).
   async function remove(warning: Warning) {
-    if (mutating.current || !warning.isRead) return;
-    if (!window.confirm(`Melding "${warning.title}" (${warning.room}) definitief verwijderen?`)) return;
+    if (mutating.current || !warning.isRead || user?.role !== 'Beheerder') return;
     mutating.current = true; revision.current++; setBusy(warning.id); setActionError('');
     try {
       await api(`/api/warnings/${warning.id}`, 'DELETE', undefined);
       setData(previous => previous && { ...previous, items: previous.items.filter(w => w.id !== warning.id) });
       setExpanded(current => (current === warning.id ? null : current));
+      setTeVerwijderen(null);
     } catch (e) { setActionError((e as Error).message); }
     finally { revision.current++; mutating.current = false; setBusy(null); }
   }
@@ -163,7 +165,7 @@ export default function WaarschuwingenPage() {
                   <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />
                 </button>
                 {isBeheerder && w.isRead && (
-                  <button type="button" aria-label={`Verwijder melding ${w.title}, ${w.room}`} title="Verwijderen" disabled={busy !== null} onClick={() => void remove(w)}
+                  <button type="button" aria-label={`Verwijder melding ${w.title}, ${w.room}`} aria-haspopup="dialog" title="Verwijderen" disabled={busy !== null} onClick={() => { setTeVerwijderen(w); setActionError(''); }}
                     className="m-4 shrink-0 rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-400">
                     <Trash2 size={18} />
                   </button>
@@ -178,6 +180,16 @@ export default function WaarschuwingenPage() {
           })}
       </section>
       <p role="status" className="mt-4 text-xs text-slate-500 dark:text-slate-400">{data?.lastSuccessAt ? `Laatste geslaagde sensorcontrole: ${time(data.lastSuccessAt)}. ` : 'Nog geen geslaagde sensorcontrole. '}De lijst wordt elke 30 seconden opgehaald.</p>
+      {isBeheerder && teVerwijderen && (
+        <FormDialog title="Melding verwijderen?" titleId="melding-verwijderen-heading" busy={busy !== null} onClose={() => setTeVerwijderen(null)}>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Weet je zeker dat je de melding "{teVerwijderen.title}" voor lokaal {teVerwijderen.room} in {teVerwijderen.building} definitief wilt verwijderen?</p>
+          {actionError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{actionError}</p>}
+          <div className="mt-5 flex flex-wrap justify-end gap-3">
+            <button type="button" autoFocus disabled={busy !== null} onClick={() => setTeVerwijderen(null)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700">Annuleren</button>
+            <button type="button" disabled={busy !== null} onClick={() => void remove(teVerwijderen)} className="rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{busy !== null ? 'Verwijderen…' : 'Melding verwijderen'}</button>
+          </div>
+        </FormDialog>
+      )}
     </main>
   </div>;
 }
