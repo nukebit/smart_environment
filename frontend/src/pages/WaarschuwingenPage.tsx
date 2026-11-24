@@ -20,6 +20,9 @@ const tone = (kind: string) => {
 // Categorie van een melding, afgeleid van de soort: 'temperature-high' wordt 'temperature'.
 const category = (kind: string) => kind.split('-')[0];
 
+// De sensorfilter toont alleen ontbrekende recente data; ongeldige meetwaarden blijven bij hun meetcategorie.
+const isSensorWarning = (kind: string) => kind === 'stale';
+
 const toneStyles = {
   temperature: {
     label: 'Temperatuur',
@@ -57,7 +60,7 @@ export default function WaarschuwingenPage() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [room, setRoom] = useState('');
-  const [tab, setTab] = useState<'all' | 'temperature' | 'humidity' | 'pressure'>('all');
+  const [tab, setTab] = useState<'all' | 'temperature' | 'humidity' | 'pressure' | 'sensor'>('all');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const revision = useRef(0);
@@ -109,7 +112,7 @@ export default function WaarschuwingenPage() {
   const items = data?.items ?? [];
   const rooms = [...new Map(items.map(w => [w.lokaalId, `${w.building} · ${w.room}`])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const inRoom = items.filter(w => !room || String(w.lokaalId) === room);
-  const visible = inRoom.filter(w => tab === 'all' || category(w.kind) === tab);
+  const visible = inRoom.filter(w => tab === 'all' || (tab === 'sensor' ? isSensorWarning(w.kind) : category(w.kind) === tab));
   if (!user) return <main className="p-6"><p role={error ? 'alert' : 'status'}>{error || 'Sessie controleren…'}</p></main>;
   return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
     <AppHeader activePage="Waarschuwingen" role={user.role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -123,6 +126,7 @@ export default function WaarschuwingenPage() {
           ['temperature', 'Temperatuur', inRoom.filter(w => category(w.kind) === 'temperature').length],
           ['humidity', 'Luchtvochtigheid', inRoom.filter(w => category(w.kind) === 'humidity').length],
           ['pressure', 'Luchtdruk', inRoom.filter(w => category(w.kind) === 'pressure').length],
+          ['sensor', 'Sensor', inRoom.filter(w => isSensorWarning(w.kind)).length],
         ] as const).map(([id, label, count]) => <button key={id} aria-pressed={tab === id} onClick={() => { setTab(id); setExpanded(null); }}
           className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === id ? 'bg-brand text-white' : 'border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'}`}>{label} ({count})</button>)}</div>
         <label className="text-sm font-semibold">Lokaal
