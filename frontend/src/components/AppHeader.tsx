@@ -108,6 +108,9 @@ useEffect(() => {
 
       if (!response.ok && response.status !== 401) throw new Error();
 
+      // Tijdelijke lokaalkeuze verwijderen na uitloggen.
+      sessionStorage.removeItem('dashboardGeselecteerdLokaal');
+
       window.location.replace('/login');
     } catch {
       setError('Uitloggen mislukt. Probeer opnieuw.');
