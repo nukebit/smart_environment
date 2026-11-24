@@ -20,7 +20,7 @@ public static class WarningEndpoints
             var items = await db.SensorWarnings.AsNoTracking().Where(w => w.Confirmed)
                 .OrderByDescending(w => w.CreatedAt).ThenByDescending(w => w.Id)
                 .Select(w => new { w.Id, w.LokaalId, w.Room, w.Building, w.Kind, w.Title,
-                    w.Advice, w.Unit,
+                    w.Advice, w.Unit, w.FirstValue,
                     // Oude ongeldige waarden werden niet op de melding opgeslagen.
                     // Gebruik uitsluitend de historische meting van hetzelfde device en tijdstip.
                     Value = w.Value ?? (w.Kind == "temperature-invalid" || w.Kind == "humidity-invalid" || w.Kind == "pressure-invalid"

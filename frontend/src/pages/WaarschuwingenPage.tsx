@@ -6,7 +6,7 @@ import { useDarkMode } from '../hooks/useDarkMode';
 import { api } from '../lib/api';
 
 type Warning = { id: number; lokaalId: number; room: string; building: string; title: string; kind: string;
-  advice: string; value: number | null; limit: number | null; unit: string; createdAt: string; measuredAt: string; isRead: boolean };
+  advice: string; value: number | null; firstValue: number | null; limit: number | null; unit: string; createdAt: string; measuredAt: string; isRead: boolean };
 type WarningResponse = { items: Warning[]; lastSuccessAt: string | null; error: string | null };
 const time = (value: string) => new Date(value.endsWith('Z') ? value : value + 'Z').toLocaleString('nl-NL');
 
@@ -125,16 +125,23 @@ export default function WaarschuwingenPage() {
   const exportCategory = { all: 'Alle', temperature: 'Temperatuur', humidity: 'Luchtvochtigheid', pressure: 'Luchtdruk', sensor: 'Sensor' }[tab];
   const exportRoom = rooms.find(([id]) => String(id) === room)?.[1] ?? 'Alle lokalen';
 
-  async function downloadPdf() {
+  async function downloadExcel() {
     if (!validExportCount || exporting.current) return;
     exporting.current = true; setExportBusy(true); setExportError('');
     try {
-      const { createWarningsPdf } = await import('../lib/warningsPdf');
-      const pdf = createWarningsPdf(visible, count, exportCategory, exportRoom);
-      await pdf.save(`waarschuwingen-${new Date().toISOString().slice(0, 10)}.pdf`, { returnPromise: true });
+      const { createWarningsExcel } = await import('../lib/warningsExcel');
+      const bytes = await createWarningsExcel(visible, count, exportCategory, exportRoom);
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `waarschuwingen-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
       setExportOpen(false);
     } catch {
-      setExportError('PDF downloaden mislukt. Probeer het opnieuw.');
+      setExportError('Excel downloaden mislukt. Probeer het opnieuw.');
     } finally { exporting.current = false; setExportBusy(false); }
   }
   if (!user) return <main className="p-6"><p role={error ? 'alert' : 'status'}>{error || 'Sessie controleren…'}</p></main>;
@@ -159,7 +166,7 @@ export default function WaarschuwingenPage() {
             <button type="button" aria-haspopup="dialog" disabled={!visible.length || busy !== null} onClick={() => {
               setExportCount(String(Math.min(100, visible.length))); setExportError(''); setExportOpen(true);
             }} className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-              <Download size={17} aria-hidden="true" /> PDF downloaden
+              <Download size={17} aria-hidden="true" /> Excel downloaden
             </button>
           </div>
         <label className="text-sm font-semibold">Lokaal
@@ -181,7 +188,7 @@ export default function WaarschuwingenPage() {
                   ? 'bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400'
                   : `${t.unread} text-slate-950 dark:text-slate-50`}`}>
                 <div className="flex items-start">
-                <button aria-label={`${w.title}, ${w.room}, ${w.isRead ? 'gelezen' : 'ongelezen'}`} disabled={busy !== null} aria-expanded={expanded === w.id} aria-controls={`warning-${w.id}`} onClick={() => {
+                <button aria-label={`${w.title}, ${w.room}, ${w.isRead ? 'gelezen' : 'ongelezen'}`} disabled={busy !== null} aria-expanded={w.limit !== null ? expanded === w.id : undefined} aria-controls={w.limit !== null ? `warning-${w.id}` : undefined} onClick={() => {
                   if (expanded === w.id) setExpanded(null); else { setExpanded(w.id); void mark(w, true); }
                 }} className="flex min-w-0 flex-1 items-start gap-3 p-5 text-left hover:bg-slate-100/60 focus-visible:outline-2 focus-visible:outline-brand dark:hover:bg-slate-700/40">
                   <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${w.isRead ? 'bg-transparent' : t.dot}`} />
@@ -191,10 +198,10 @@ export default function WaarschuwingenPage() {
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${t.badge}`}>{t.label}</span>
                     </div>
                     <p className="mt-1 text-sm">{w.building} · {w.room}</p>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.value !== null && ` · ${w.value.toLocaleString('nl-NL', { maximumSignificantDigits: 21 })} ${w.unit}`}</p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.firstValue != null && ` · ${w.firstValue.toLocaleString('nl-NL', { maximumSignificantDigits: 21 })} ${w.unit}`}</p>
                     <p className="mt-2 text-sm"><strong>Advies:</strong> {w.advice}</p>
                   </div>
-                  <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />
+                  {w.limit !== null && <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />}
                 </button>
                 {isBeheerder && w.isRead && (
                   <button type="button" aria-label={`Verwijder melding ${w.title}, ${w.room}`} aria-haspopup="dialog" title="Verwijderen" disabled={busy !== null} onClick={() => { setTeVerwijderen(w); setActionError(''); }}
@@ -203,9 +210,8 @@ export default function WaarschuwingenPage() {
                   </button>
                 )}
                 </div>
-                {expanded === w.id && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
+                {expanded === w.id && w.limit !== null && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
                   {w.limit !== null && <p>{w.kind.endsWith('-high') ? 'Bovengrens' : 'Ondergrens'} bij melding: {w.limit.toLocaleString('nl-NL')} {w.unit}</p>}
-                  <p className="mt-1">Laatst geregistreerde meting bij deze melding: {time(w.measuredAt)}</p>
                 </div>}
               </article>
             );
@@ -214,7 +220,7 @@ export default function WaarschuwingenPage() {
       <p role="status" className="mt-4 text-xs text-slate-500 dark:text-slate-400">{data?.lastSuccessAt ? `Laatste geslaagde sensorcontrole: ${time(data.lastSuccessAt)}. ` : 'Nog geen geslaagde sensorcontrole. '}De lijst wordt elke 30 seconden opgehaald.</p>
       {exportOpen && (
         <FormDialog title="Waarschuwingen exporteren" titleId="export-heading" busy={exportBusy} onClose={() => setExportOpen(false)}>
-          <form onSubmit={event => { event.preventDefault(); void downloadPdf(); }}>
+          <form onSubmit={event => { event.preventDefault(); void downloadExcel(); }}>
             <p className="text-sm text-slate-600 dark:text-slate-300">{exportCategory} · {exportRoom}</p>
             <p id="export-count-help" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{visible.length} meldingen beschikbaar. De nieuwste meldingen worden eerst geëxporteerd.</p>
             <label htmlFor="export-count" className="mt-5 block text-sm font-semibold">Aantal meldingen</label>
@@ -225,7 +231,7 @@ export default function WaarschuwingenPage() {
             {exportError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{exportError}</p>}
             <div className="mt-5 flex flex-wrap justify-end gap-3">
               <button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700">Annuleren</button>
-              <button type="submit" disabled={exportBusy || !validExportCount} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{exportBusy ? 'PDF maken…' : 'PDF downloaden'}</button>
+              <button type="submit" disabled={exportBusy || !validExportCount} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{exportBusy ? 'Excel maken…' : 'Excel downloaden'}</button>
             </div>
           </form>
         </FormDialog>
