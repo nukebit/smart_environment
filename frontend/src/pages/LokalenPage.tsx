@@ -4,6 +4,7 @@ import AppHeader from '../components/AppHeader';
 import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { api } from '../lib/api';
+import { parseGrenswaarde } from '../lib/grenswaarden';
 import type { Gebouw, Lokaal, LokaalKeuze } from '../types/lokalen';
 
 type CurrentUser = { role: string };
@@ -220,31 +221,31 @@ export default function LokalenPage() {
     for (const [metric, label] of grensvelden) {
       const minimum = form[`${metric}Minimum`];
       const maximum = form[`${metric}Maximum`];
-      const low = Number(minimum), high = Number(maximum);
+      const low = parseGrenswaarde(minimum), high = parseGrenswaarde(maximum);
       if (!minimum.trim() || !maximum.trim() || !Number.isFinite(low) || !Number.isFinite(high)) {
-        setFormError(label + ': vul een geldig getal in voor beide grenzen.');
+        setFormError(label + ': vul een geldig getal in voor beide grenzen. Zet een minteken vóór het getal, bijvoorbeeld -20.');
+        return;
+      }
+      if (metric === 'humidity' && (low < 0 || low > 100 || high < 0 || high > 100)) {
+        setFormError('Luchtvochtigheid: beide grenzen moeten tussen 0 en 100% liggen.');
+        return;
+      }
+      if (metric === 'pressure' && (low <= 0 || high <= 0)) {
+        setFormError('Luchtdruk: beide grenzen moeten groter zijn dan 0 hPa.');
+        return;
+      }
+      if (metric === 'temperature' && (low < -273.15 || high < -273.15)) {
+        setFormError('Temperatuur: grenzen mogen niet lager zijn dan −273,15°C.');
         return;
       }
       if (low >= high) {
         setFormError(label + ': de ondergrens moet lager zijn dan de bovengrens.');
         return;
       }
-      if (metric === 'humidity' && (low < 0 || high > 100)) {
-        setFormError('Luchtvochtigheid: beide grenzen moeten tussen 0 en 100% liggen.');
-        return;
-      }
-      if (metric === 'pressure' && low <= 0) {
-        setFormError('Luchtdruk: beide grenzen moeten groter zijn dan 0 hPa.');
-        return;
-      }
-      if (metric === 'temperature' && low < -273.15) {
-        setFormError('Temperatuur: grenzen mogen niet lager zijn dan −273,15°C.');
-        return;
-      }
     }
     setBusy(true);
     try {
-      const response = await sendWithCsrf(editing ? `/api/lokalen/${editing.id}` : '/api/lokalen', editing ? 'PUT' : 'POST', { naam, gebouwId, temperatureMinimum: Number(form.temperatureMinimum), temperatureMaximum: Number(form.temperatureMaximum), humidityMinimum: Number(form.humidityMinimum), humidityMaximum: Number(form.humidityMaximum), pressureMinimum: Number(form.pressureMinimum), pressureMaximum: Number(form.pressureMaximum) });
+      const response = await sendWithCsrf(editing ? `/api/lokalen/${editing.id}` : '/api/lokalen', editing ? 'PUT' : 'POST', { naam, gebouwId, temperatureMinimum: parseGrenswaarde(form.temperatureMinimum), temperatureMaximum: parseGrenswaarde(form.temperatureMaximum), humidityMinimum: parseGrenswaarde(form.humidityMinimum), humidityMaximum: parseGrenswaarde(form.humidityMaximum), pressureMinimum: parseGrenswaarde(form.pressureMinimum), pressureMaximum: parseGrenswaarde(form.pressureMaximum) });
       if (!response.ok) throw new Error(await readError(response));
       const lokaal: Lokaal = await response.json();
       setLokalen(current => editing
@@ -526,15 +527,13 @@ export default function LokalenPage() {
                     <div className="mt-4 grid gap-4 sm:grid-cols-3">
                       {grensvelden.map(([metric, label, unit]) => <div key={metric} className="rounded-xl border border-slate-200 p-3 dark:border-slate-600">
                         <h3 className="mb-3 text-sm font-semibold">{label} ({unit})</h3>
-                        {(['Minimum', 'Maximum'] as const).map(bound => {
+                        {(['Maximum', 'Minimum'] as const).map(bound => {
                           const field = `${metric}${bound}` as keyof typeof form;
                           return <label key={bound} className="mb-3 block text-sm last:mb-0">
                             <span className="mb-1 block">{bound === 'Minimum' ? 'Ondergrens' : 'Bovengrens'}</span>
-                            <input type="number" step="any" required value={form[field]}
-                              min={metric === 'humidity' || metric === 'pressure' ? 0 : -273.15}
-                              max={metric === 'humidity' ? 100 : undefined}
+                            <input type="text" inputMode="decimal" dir="ltr" required value={form[field]}
                               onChange={event => setForm({ ...form, [field]: event.target.value })}
-                              className={inputClass} />
+                              className={`${inputClass} text-left`} />
                           </label>;
                         })}
                       </div>)}

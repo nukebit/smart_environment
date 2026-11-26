@@ -19,6 +19,7 @@ public class SensorWarning
     public string Advice { get; set; } = "";
     public string Unit { get; set; } = "";
     public double? Value { get; set; }
+    public double? FirstValue { get; set; }
     public double? Limit { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime MeasuredAt { get; set; }

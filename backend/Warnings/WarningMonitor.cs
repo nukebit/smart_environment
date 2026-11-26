@@ -70,7 +70,7 @@ public class WarningMonitor(IServiceScopeFactory scopes, ILogger<WarningMonitor>
                 {
                     warning = new SensorWarning { LokaalId = room.Id, DeviceId = reading.DeviceId, Room = room.Naam, Building = room.Gebouw.Naam,
                         Kind = condition.Kind, Title = condition.Title, Advice = condition.Advice, Unit = condition.Unit,
-                        Value = condition.Value, Limit = condition.Limit, CreatedAt = now,
+                        Value = condition.Value, FirstValue = condition.Value, Limit = condition.Limit, CreatedAt = now,
                         MeasuredAt = measurement.Timestamp, IsOpen = true, Confirmed = condition.Immediate };
                     db.SensorWarnings.Add(warning);
                 }
@@ -81,6 +81,12 @@ public class WarningMonitor(IServiceScopeFactory scopes, ILogger<WarningMonitor>
                     warning.MeasuredAt = measurement.Timestamp;
                     warning.Value = condition.Value;
                     warning.Limit = condition.Limit;
+                }
+                else if (measurement.Timestamp == warning.MeasuredAt && warning.Value is null
+                    && condition.Kind.EndsWith("-invalid") && condition.Value is not null)
+                {
+                    // Vul oude meldingen alleen aan met de exact bijbehorende meting.
+                    warning.Value = condition.Value;
                 }
             }
         }

@@ -33,7 +33,8 @@ public static class WarningEvaluator
             if (!ValidValue(limit.Id, value))
             {
                 conditions.Add(new(limit.Id + "-invalid", name + ": ongeldige meetwaarde",
-                    "Controleer de sensor en de meeteenheid. Laat de sensor zo nodig nakijken.", unit, null, null, true));
+                    "Controleer de sensor en de meeteenheid. Laat de sensor zo nodig nakijken.", unit,
+                    value is double invalidValue && double.IsFinite(invalidValue) ? invalidValue : null, null, true));
                 continue;
             }
             bool high = value > limit.Maximum, low = value < limit.Minimum;

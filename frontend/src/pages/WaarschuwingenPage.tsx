@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, Trash2 } from 'lucide-react';
+import { Bell, ChevronDown, Download, Trash2 } from 'lucide-react';
 import AppHeader from '../components/AppHeader';
+import FormDialog from '../components/FormDialog';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { api } from '../lib/api';
 
 type Warning = { id: number; lokaalId: number; room: string; building: string; title: string; kind: string;
-  advice: string; value: number | null; limit: number | null; unit: string; createdAt: string; measuredAt: string; isRead: boolean };
+  advice: string; value: number | null; firstValue: number | null; limit: number | null; unit: string; createdAt: string; measuredAt: string; isRead: boolean };
 type WarningResponse = { items: Warning[]; lastSuccessAt: string | null; error: string | null };
 const time = (value: string) => new Date(value.endsWith('Z') ? value : value + 'Z').toLocaleString('nl-NL');
 
@@ -19,6 +20,9 @@ const tone = (kind: string) => {
 
 // Categorie van een melding, afgeleid van de soort: 'temperature-high' wordt 'temperature'.
 const category = (kind: string) => kind.split('-')[0];
+
+// De sensorfilter toont alleen ontbrekende recente data; ongeldige meetwaarden blijven bij hun meetcategorie.
+const isSensorWarning = (kind: string) => kind === 'stale';
 
 const toneStyles = {
   temperature: {
@@ -57,9 +61,15 @@ export default function WaarschuwingenPage() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [room, setRoom] = useState('');
-  const [tab, setTab] = useState<'all' | 'temperature' | 'humidity' | 'pressure'>('all');
+  const [tab, setTab] = useState<'all' | 'temperature' | 'humidity' | 'pressure' | 'sensor'>('all');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [teVerwijderen, setTeVerwijderen] = useState<Warning | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportCount, setExportCount] = useState('100');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exporting = useRef(false);
   const revision = useRef(0);
   const mutating = useRef(false);
   const [darkMode, toggleDarkMode] = useDarkMode();
@@ -95,13 +105,13 @@ export default function WaarschuwingenPage() {
   }
   // Alleen een beheerder mag een gelezen melding definitief verwijderen (ook uit de database).
   async function remove(warning: Warning) {
-    if (mutating.current || !warning.isRead) return;
-    if (!window.confirm(`Melding "${warning.title}" (${warning.room}) definitief verwijderen?`)) return;
+    if (mutating.current || !warning.isRead || user?.role !== 'Beheerder') return;
     mutating.current = true; revision.current++; setBusy(warning.id); setActionError('');
     try {
       await api(`/api/warnings/${warning.id}`, 'DELETE', undefined);
       setData(previous => previous && { ...previous, items: previous.items.filter(w => w.id !== warning.id) });
       setExpanded(current => (current === warning.id ? null : current));
+      setTeVerwijderen(null);
     } catch (e) { setActionError((e as Error).message); }
     finally { revision.current++; mutating.current = false; setBusy(null); }
   }
@@ -109,7 +119,31 @@ export default function WaarschuwingenPage() {
   const items = data?.items ?? [];
   const rooms = [...new Map(items.map(w => [w.lokaalId, `${w.building} · ${w.room}`])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const inRoom = items.filter(w => !room || String(w.lokaalId) === room);
-  const visible = inRoom.filter(w => tab === 'all' || category(w.kind) === tab);
+  const visible = inRoom.filter(w => tab === 'all' || (tab === 'sensor' ? isSensorWarning(w.kind) : category(w.kind) === tab));
+  const count = Number(exportCount);
+  const validExportCount = Number.isInteger(count) && count >= 1 && count <= visible.length;
+  const exportCategory = { all: 'Alle', temperature: 'Temperatuur', humidity: 'Luchtvochtigheid', pressure: 'Luchtdruk', sensor: 'Sensor' }[tab];
+  const exportRoom = rooms.find(([id]) => String(id) === room)?.[1] ?? 'Alle lokalen';
+
+  async function downloadExcel() {
+    if (!validExportCount || exporting.current) return;
+    exporting.current = true; setExportBusy(true); setExportError('');
+    try {
+      const { createWarningsExcel } = await import('../lib/warningsExcel');
+      const bytes = await createWarningsExcel(visible, count, exportCategory, exportRoom);
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `waarschuwingen-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setExportOpen(false);
+    } catch {
+      setExportError('Excel downloaden mislukt. Probeer het opnieuw.');
+    } finally { exporting.current = false; setExportBusy(false); }
+  }
   if (!user) return <main className="p-6"><p role={error ? 'alert' : 'status'}>{error || 'Sessie controleren…'}</p></main>;
   return <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
     <AppHeader activePage="Waarschuwingen" role={user.role} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -123,13 +157,24 @@ export default function WaarschuwingenPage() {
           ['temperature', 'Temperatuur', inRoom.filter(w => category(w.kind) === 'temperature').length],
           ['humidity', 'Luchtvochtigheid', inRoom.filter(w => category(w.kind) === 'humidity').length],
           ['pressure', 'Luchtdruk', inRoom.filter(w => category(w.kind) === 'pressure').length],
+          ['sensor', 'Sensor', inRoom.filter(w => isSensorWarning(w.kind)).length],
         ] as const).map(([id, label, count]) => <button key={id} aria-pressed={tab === id} onClick={() => { setTab(id); setExpanded(null); }}
           className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === id ? 'bg-brand text-white' : 'border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'}`}>{label} ({count})</button>)}</div>
+        <div className="ml-auto flex flex-col items-end gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <span className="text-sm text-slate-500 dark:text-slate-400">{visible.length} meldingen</span>
+            <button type="button" aria-haspopup="dialog" disabled={!visible.length || busy !== null} onClick={() => {
+              setExportCount(String(Math.min(100, visible.length))); setExportError(''); setExportOpen(true);
+            }} className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <Download size={17} aria-hidden="true" /> Excel downloaden
+            </button>
+          </div>
         <label className="text-sm font-semibold">Lokaal
           <select value={room} onChange={e => { setRoom(e.target.value); setExpanded(null); }} className="ml-3 rounded-lg border border-slate-300 bg-white p-2 dark:border-slate-600 dark:bg-slate-800">
             <option value="">Alle lokalen</option>{rooms.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
+        </div>
       </div>
       {(error || actionError || data?.error) && <p role="alert" className="mb-4 rounded-lg border border-amber-400 p-3 text-sm">{actionError || error || data?.error}</p>}
       <section aria-label="Meldingen" className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
@@ -143,7 +188,7 @@ export default function WaarschuwingenPage() {
                   ? 'bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400'
                   : `${t.unread} text-slate-950 dark:text-slate-50`}`}>
                 <div className="flex items-start">
-                <button aria-label={`${w.title}, ${w.room}, ${w.isRead ? 'gelezen' : 'ongelezen'}`} disabled={busy !== null} aria-expanded={expanded === w.id} aria-controls={`warning-${w.id}`} onClick={() => {
+                <button aria-label={`${w.title}, ${w.room}, ${w.isRead ? 'gelezen' : 'ongelezen'}`} disabled={busy !== null} aria-expanded={w.limit !== null ? expanded === w.id : undefined} aria-controls={w.limit !== null ? `warning-${w.id}` : undefined} onClick={() => {
                   if (expanded === w.id) setExpanded(null); else { setExpanded(w.id); void mark(w, true); }
                 }} className="flex min-w-0 flex-1 items-start gap-3 p-5 text-left hover:bg-slate-100/60 focus-visible:outline-2 focus-visible:outline-brand dark:hover:bg-slate-700/40">
                   <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${w.isRead ? 'bg-transparent' : t.dot}`} />
@@ -153,27 +198,54 @@ export default function WaarschuwingenPage() {
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${t.badge}`}>{t.label}</span>
                     </div>
                     <p className="mt-1 text-sm">{w.building} · {w.room}</p>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.value !== null && ` · ${w.value.toLocaleString('nl-NL')} ${w.unit}`}</p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{time(w.createdAt)}{w.firstValue != null && ` · ${w.firstValue.toLocaleString('nl-NL', { maximumSignificantDigits: 21 })} ${w.unit}`}</p>
                     <p className="mt-2 text-sm"><strong>Advies:</strong> {w.advice}</p>
                   </div>
-                  <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />
+                  {w.limit !== null && <ChevronDown size={18} className={`mt-1 shrink-0 ${expanded === w.id ? 'rotate-180' : ''}`} />}
                 </button>
                 {isBeheerder && w.isRead && (
-                  <button type="button" aria-label={`Verwijder melding ${w.title}, ${w.room}`} title="Verwijderen" disabled={busy !== null} onClick={() => void remove(w)}
+                  <button type="button" aria-label={`Verwijder melding ${w.title}, ${w.room}`} aria-haspopup="dialog" title="Verwijderen" disabled={busy !== null} onClick={() => { setTeVerwijderen(w); setActionError(''); }}
                     className="m-4 shrink-0 rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-400">
                     <Trash2 size={18} />
                   </button>
                 )}
                 </div>
-                {expanded === w.id && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
+                {expanded === w.id && w.limit !== null && <div id={`warning-${w.id}`} className="border-t border-slate-200 px-10 py-4 text-sm dark:border-slate-700">
                   {w.limit !== null && <p>{w.kind.endsWith('-high') ? 'Bovengrens' : 'Ondergrens'} bij melding: {w.limit.toLocaleString('nl-NL')} {w.unit}</p>}
-                  <p className="mt-1">Meettijdstip: {time(w.measuredAt)}</p>
                 </div>}
               </article>
             );
           })}
       </section>
       <p role="status" className="mt-4 text-xs text-slate-500 dark:text-slate-400">{data?.lastSuccessAt ? `Laatste geslaagde sensorcontrole: ${time(data.lastSuccessAt)}. ` : 'Nog geen geslaagde sensorcontrole. '}De lijst wordt elke 30 seconden opgehaald.</p>
+      {exportOpen && (
+        <FormDialog title="Waarschuwingen exporteren" titleId="export-heading" busy={exportBusy} onClose={() => setExportOpen(false)}>
+          <form onSubmit={event => { event.preventDefault(); void downloadExcel(); }}>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{exportCategory} · {exportRoom}</p>
+            <p id="export-count-help" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{visible.length} meldingen beschikbaar. De nieuwste meldingen worden eerst geëxporteerd.</p>
+            <label htmlFor="export-count" className="mt-5 block text-sm font-semibold">Aantal meldingen</label>
+            <input id="export-count" type="number" min={1} max={visible.length} step={1} required autoFocus disabled={exportBusy} value={exportCount}
+              onChange={event => setExportCount(event.target.value)} aria-invalid={!validExportCount} aria-describedby="export-count-help export-count-validation"
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900" />
+            <p id="export-count-validation" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{visible.length ? `Vul een geheel getal in van 1 tot en met ${visible.length}.` : 'Geen meldingen beschikbaar voor deze selectie.'}</p>
+            {exportError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{exportError}</p>}
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700">Annuleren</button>
+              <button type="submit" disabled={exportBusy || !validExportCount} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{exportBusy ? 'Excel maken…' : 'Excel downloaden'}</button>
+            </div>
+          </form>
+        </FormDialog>
+      )}
+      {isBeheerder && teVerwijderen && (
+        <FormDialog title="Melding verwijderen?" titleId="melding-verwijderen-heading" busy={busy !== null} onClose={() => setTeVerwijderen(null)}>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Weet je zeker dat je de melding "{teVerwijderen.title}" voor lokaal {teVerwijderen.room} in {teVerwijderen.building} definitief wilt verwijderen?</p>
+          {actionError && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{actionError}</p>}
+          <div className="mt-5 flex flex-wrap justify-end gap-3">
+            <button type="button" autoFocus disabled={busy !== null} onClick={() => setTeVerwijderen(null)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700">Annuleren</button>
+            <button type="button" disabled={busy !== null} onClick={() => void remove(teVerwijderen)} className="rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{busy !== null ? 'Verwijderen…' : 'Melding verwijderen'}</button>
+          </div>
+        </FormDialog>
+      )}
     </main>
   </div>;
 }
